@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <a href="#" class="btn-sm" onclick="history.back(); return false;">← Back</a>
+  <input class="search-box" type="text" id="searchBox" placeholder="Filter files…"
+         oninput="filterTable(this.value)">
+  <button class="btn-sm" style="margin-left:auto"
+          data-subtitle="Directory: {{ subdir.directory }}/{{ subdir.subdirectory }} / {{ area_label }}{% if latest_snapshot %} · Snapshot: {{ latest_snapshot.run_date }}{% endif %}"
+          onclick="downloadBiggestFilesReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  Extension totals cover every file under this directory. The file list below is capped at the
+  1000 biggest files and only kept for the current and previous month's crawl.
+</p>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Directory</div>
+    <div class="value" style="font-size:16px">{{ subdir.directory }}/{{ subdir.subdirectory }}</div>
+    <div class="sub">{{ area_label }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Total size (this directory)</div>
+    <div class="value">{{ subdir.dir_size_raw or "—" }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Extensions</div>
+    <div class="value">{{ extension_stats | length }}</div>
+    <div class="sub">{{ human_bytes(total_size_bytes) }} accounted for</div>
+  </div>
+  <div class="tile">
+    <div class="label">Files listed</div>
+    <div class="value">{{ top_files | length }}</div>
+    <div class="sub">{% if latest_snapshot %}as of {{ latest_snapshot.run_date }}{% endif %}</div>
+  </div>
+</div>
+
+{% if extension_stats %}
+<div class="charts-grid" style="grid-template-columns: 1fr;">
+  <div class="chart-box">
+    <h3>Size by extension</h3>
+    <canvas id="extensionChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Size by extension{% if latest_snapshot %} — latest snapshot ({{ latest_snapshot.run_date }}){% endif %}</h2>
+    <div style="display:flex; gap:8px; align-items:center;">
+      {% if extension_stats %}
+      <select id="extLimitSelect" onchange="applyExtLimit()">
+        <option value="5">Top 5</option>
+        <option value="10">Top 10</option>
+        <option value="20">Top 20</option>
+        <option value="all">All ({{ extension_stats | length }})</option>
+      </select>
+      {% endif %}
+      <button class="btn-sm" onclick="downloadExtensionCSV()">⬇ CSV (all {{ extension_stats | length }})</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="extensionTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable2(0)">Extension ↕</th>
+          <th onclick="sortTable2(1)">Files ↕</th>
+          <th onclick="sortTable2(2)">Total size ↕</th>
+          <th onclick="sortTable2(3)">% of directory ↕</th>
+        </tr>
+      </thead>
+      <tbody id="extensionTableBody">
+        {% for r in extension_stats %}
+        <tr data-rank="{{ loop.index }}">
+          <td class="mono">.{{ r.extension }}</td>
+          <td data-value="{{ r.file_count }}">{{ r.file_count }}</td>
+          <td data-value="{{ r.total_size_bytes }}">{{ human_bytes(r.total_size_bytes) }}</td>
+          <td data-value="{{ r.pct }}">{{ "%.1f" | format(r.pct) }}%</td>
+        </tr>
+        {% endfor %}
+        {% if not extension_stats %}
+        <tr><td colspan="4" style="color:var(--muted)">
+          No extension data yet — run the crawler with --subdirs and import it to populate this view.
+        </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Biggest files{% if latest_snapshot %} — latest snapshot ({{ latest_snapshot.run_date }}){% endif %}</h2>
+    <div style="display:flex; gap:8px;">
+      {% if top_files | length > 100 %}
+      <button class="btn-sm" id="topFilesToggle" onclick="toggleTopFilesLimit()">Show all {{ top_files | length }}</button>
+      {% endif %}
+      <button class="btn-sm" onclick="downloadTopFilesCSV()">⬇ CSV (all {{ top_files | length }})</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table id="topFilesTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">#</th>
+          <th onclick="sortTable(1)">Path ↕</th>
+          <th onclick="sortTable(2)">Extension</th>
+          <th onclick="sortTable(3)">Size ↕</th>
+          <th onclick="sortTable(4)">Modified</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in top_files %}
+        <tr data-name="{{ r.file_path | lower }}"{% if r.rank > 100 %} class="top-files-extra" style="display:none"{% endif %}>
+          <td data-value="{{ r.rank }}">{{ r.rank }}</td>
+          <td class="mono" style="white-space:normal; word-break:break-all;">{{ r.file_path }}</td>
+          <td>.{{ r.extension }}</td>
+          <td data-value="{{ r.size_bytes }}">{{ human_bytes(r.size_bytes) }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ r.mtime or "—" }}</td>
+        </tr>
+        {% endfor %}
+        {% if not top_files %}
+        <tr><td colspan="5" style="color:var(--muted)">
+          No file-level data yet — run the crawler with --subdirs and import it to populate this view.
+        </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+{% if extension_stats %}
+const extLabelsAll = {{ extension_stats | map(attribute="extension") | list | tojson }}.map(e => "." + e);
+const extSizesBytesAll = {{ extension_stats | map(attribute="total_size_bytes") | list | tojson }};
+
+const extensionChart = new Chart(document.getElementById("extensionChart"), {
+  type: "bar",
+  data: {
+    labels: [],
+    datasets: [{
+      label: "GB",
+      data: [],
+      backgroundColor: cssVar('--accent'),
+    }]
+  },
+  options: {
+    animation: false,
+    indexAxis: "y",
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+      y: { ticks: { color: cssVar('--text'), font: { size: 11 } }, grid: { color: cssVar('--border') } },
+    }
+  }
+});
+
+function applyExtLimit() {
+  const sel = document.getElementById("extLimitSelect");
+  const limit = sel.value === "all" ? extLabelsAll.length : parseInt(sel.value, 10);
+
+  document.querySelectorAll("#extensionTableBody tr[data-rank]").forEach(tr => {
+    tr.style.display = parseInt(tr.dataset.rank, 10) <= limit ? "" : "none";
+  });
+
+  extensionChart.data.labels = extLabelsAll.slice(0, limit);
+  extensionChart.data.datasets[0].data = extSizesBytesAll.slice(0, limit).map(b => b / 1e9);
+  extensionChart.update();
+}
+
+applyExtLimit();
+{% endif %}
+
+// Unlike downloadTableCSV(), this always exports every extension regardless
+// of the Top 5/10/20/All selector — the report use case wants the full
+// breakdown even when the on-screen table/chart is capped for readability.
+function downloadExtensionCSV() {
+  const table = document.getElementById("extensionTable");
+  const headerCells = Array.from(table.querySelectorAll("thead th"));
+  const rows = [headerCells.map(th => th.innerText.replace(/[↕\s]+$/, "").trim())];
+  table.querySelectorAll("tbody tr").forEach(tr => {
+    rows.push(Array.from(tr.children).map(td => td.innerText.trim()));
+  });
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\r\n");
+  triggerDownload(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "extension-stats.csv");
+}
+
+function downloadBiggestFilesReportPDF(btn) {
+  downloadReportPDF({
+    filename: "biggest-files-report.pdf",
+    title: "JIC Storage Dashboard — Biggest Files Report",
+    subtitle: btn.dataset.subtitle,
+    tiles: collectPageTiles(),
+    charts: collectPageCharts(),
+  });
+}
+
+function toggleTopFilesLimit() {
+  const btn = document.getElementById("topFilesToggle");
+  const showingAll = btn.dataset.expanded === "true";
+  document.querySelectorAll("#tableBody tr.top-files-extra").forEach(tr => {
+    tr.style.display = showingAll ? "none" : "";
+  });
+  btn.dataset.expanded = showingAll ? "false" : "true";
+  btn.textContent = showingAll
+    ? `Show all ${document.querySelectorAll("#tableBody tr").length}`
+    : "Show top 100";
+}
+
+// Unlike downloadTableCSV(), this always exports every row regardless of the
+// top-100/show-all toggle or any active search filter — the report use case
+// wants the full biggest-files list even when the on-screen table is capped.
+function downloadTopFilesCSV() {
+  const table = document.getElementById("topFilesTable");
+  const headerCells = Array.from(table.querySelectorAll("thead th"));
+  const rows = [headerCells.map(th => th.innerText.replace(/[↕\s]+$/, "").trim())];
+  table.querySelectorAll("tbody tr").forEach(tr => {
+    rows.push(Array.from(tr.children).map(td => td.innerText.trim()));
+  });
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\r\n");
+  triggerDownload(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "top-files.csv");
+}
+
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = (tr.dataset.name || "").includes(lower) ? "" : "none";
+  });
+}
+
+function sortRows(tbodyId, col, dirState) {
+  const tbody = document.getElementById(tbodyId);
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(dirState[col]);
+  Object.keys(dirState).forEach(k => delete dirState[k]);
+  dirState[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+let sortDir = {};
+function sortTable(col) { sortRows("tableBody", col, sortDir); }
+
+let sortDir2 = {};
+function sortTable2(col) { sortRows("extensionTableBody", col, sortDir2); }
+</script>
+{% endblock %}

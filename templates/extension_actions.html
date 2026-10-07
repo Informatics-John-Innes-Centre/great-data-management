@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto 20px auto; display:flex; gap:8px;">
+  <a href="{{ url_for('settings') }}" class="btn-sm"
+     style="{% if active_tab == 'settings' %}background:var(--accent); color:#fff;{% endif %}">Settings</a>
+  <a href="{{ url_for('access_admin') }}" class="btn-sm"
+     style="{% if active_tab == 'access' %}background:var(--accent); color:#fff;{% endif %}">Access Control</a>
+  <a href="{{ url_for('extension_actions') }}" class="btn-sm"
+     style="{% if active_tab == 'extensions' %}background:var(--accent); color:#fff;{% endif %}">Extension Actions</a>
+</div>
+
+<div class="card" style="max-width: 1100px; margin: 0 auto 20px auto;">
+  <h2 id="form-title">Add / Edit Extension</h2>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    Classifies a file extension for the storage composition charts on Big Files and the
+    per-directory Biggest Files pages — <span style="color:var(--red)">🔴 ACT</span> (safe to
+    delete/migrate), <span style="color:var(--amber)">🟡 WATCH</span> (needs review),
+    <span style="color:var(--green)">🟢 KEEP</span> (normally legitimate). Saving an extension
+    that's already classified overwrites its category/phrase. Extensions not listed here show as
+    unclassified on those pages.
+  </p>
+
+  <form method="post" id="extForm" style="display:grid; grid-template-columns: 160px 160px 1fr auto; gap:10px; align-items:start;">
+    <input type="hidden" name="action" value="save">
+    <input id="ext-input" name="extension" type="text" placeholder="extension, e.g. gz" required>
+    <select id="category-input" name="category" required>
+      <option value="">Category</option>
+      {% for c in categories %}
+      <option value="{{ c }}">{{ c | upper }}</option>
+      {% endfor %}
+    </select>
+    <textarea id="phrase-input" name="phrase" placeholder="Reasoning shown in the chart tooltip/legend" rows="2" style="resize:vertical;"></textarea>
+    <div style="display:flex; gap:8px;">
+      <button type="submit" style="height:38px;">Save</button>
+      <button type="button" class="btn-sm" style="height:38px;" onclick="cancelEdit()">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="max-width: 1100px; margin: 0 auto;">
+  <div class="card-header">
+    <h2>Classified Extensions ({{ rows | length }})</h2>
+    <input class="search-box" type="text" id="searchBox" placeholder="Filter extensions…" oninput="filterTable(this.value)">
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th>Category</th>
+          <th>Phrase</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for row in rows %}
+        <tr data-name="{{ row.extension | lower }}">
+          <td class="mono">.{{ row.extension }}</td>
+          <td style="color:{% if row.category == 'red' %}var(--red){% elif row.category == 'yellow' %}var(--amber){% else %}var(--green){% endif %};">
+            {{ row.category | upper }}
+          </td>
+          <td style="color:var(--muted); font-size:12px; white-space:normal; max-width:480px;">{{ row.phrase or "—" }}</td>
+          <td style="white-space:nowrap;">
+            <a href="#" class="btn-sm edit-ext-link"
+               data-extension="{{ row.extension }}" data-category="{{ row.category }}" data-phrase="{{ row.phrase or '' }}">Edit</a>
+            <form method="post" style="display:inline;">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="extension" value="{{ row.extension }}">
+              <button type="submit" class="btn-sm">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="4" style="color:var(--muted)">No extensions classified yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function editExtension(extension, category, phrase) {
+  document.getElementById("form-title").textContent = `Edit .${extension}`;
+  document.getElementById("ext-input").value = extension;
+  document.getElementById("category-input").value = category;
+  document.getElementById("phrase-input").value = phrase || "";
+  document.getElementById("extForm").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelEdit() {
+  document.getElementById("form-title").textContent = "Add / Edit Extension";
+  document.getElementById("extForm").reset();
+}
+
+// data-* attributes (not inline onclick with embedded JSON) — tojson's
+// double-quoted strings previously collided with the onclick="..." HTML
+// attribute's own double quotes and silently corrupted the markup.
+document.querySelectorAll(".edit-ext-link").forEach(a => {
+  a.addEventListener("click", e => {
+    e.preventDefault();
+    editExtension(a.dataset.extension, a.dataset.category, a.dataset.phrase);
+  });
+});
+
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = (tr.dataset.name || "").includes(lower) ? "" : "none";
+  });
+}
+</script>
+{% endblock %}

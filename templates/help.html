@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Help</h2>
+  <p style="color:var(--muted); margin-bottom:0;">
+    A guide to what's on this dashboard and how to use it. Admin-only sections are marked below.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Common tasks</h2>
+  <p style="color:var(--muted); margin-bottom:12px;">
+    A few walkthroughs for the things people come here to do most. See "Getting around" below for
+    a full tour of every page.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Finding what's eating your storage</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Start on <strong>Big Files</strong>: pick a group leader, then an area. The doughnut chart
+    shows which file types take up the space, coloured 🔴🟡🟢 by how safe they typically are to
+    act on (see "What do the 🔴🟡🟢 colours mean?" below). Scroll to <strong>Folder breakdown</strong>
+    to see the same files grouped by subfolder instead of by type — that's usually the faster way
+    to find a specific place worth cleaning up. Once you've dealt with an extension or folder, mark
+    it dismissed/addressed so it drops out of the lists; that's saved to your browser only, so it
+    won't affect what anyone else sees.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Checking for duplicate files</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Open <strong>Duplicate Files</strong>, pick a group leader and a size tolerance (start with
+    "exact match" — widen it to a % only if you suspect near-identical copies with slightly
+    different sizes). The table clusters files that share a name and a similar size across every
+    directory that leader has access to. <strong>Don't delete anything from this list alone</strong> —
+    it's a filename+size heuristic, not a content comparison. Run an MD5/SHA checksum on both files
+    first and only treat them as true duplicates once the checksums match.
+  </p>
+
+  {% if is_admin %}
+  <h3 style="margin-bottom:6px;">Reviewing institute-wide trends (admin)</h3>
+  <p style="margin-bottom:0; line-height:1.7;">
+    <strong>Institute Trends</strong> gives the big-picture view: total storage by tier over time,
+    with delta tiles showing what changed since the last snapshot. For where that growth or
+    duplication is concentrated, <strong>Storage Alerts &amp; Insights</strong> flags individual
+    directories with a large recent size change, ranks group leaders by estimated reclaimable
+    duplicate-file space, and — in its "Shared dataset opportunities" section — surfaces big files
+    kept independently by more than one group, a possible sign the same dataset could live in one
+    shared place instead.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Getting around</h2>
+  <p style="color:var(--muted); margin-bottom:12px;">
+    Everyone signed in can use these pages.
+  </p>
+
+  {% if can_view_all_user %}
+  <h3 style="margin-bottom:6px;">Acting as a group member</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    The "Acting as" dropdown in the header (only visible to you, since you have full access) lets
+    you preview the dashboard exactly as a real member of one research group would see it —
+    useful for checking that a group's access is set up correctly. Pick a group to switch; an
+    amber banner stays on every page while it's active, with a "Stop acting as" button. This only
+    ever narrows what you see — it never grants anything extra — and doesn't affect admin pages,
+    which stay available throughout.
+  </p>
+  {% endif %}
+
+  <h3 style="margin-bottom:6px;">Overview</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    The homepage. Pick a <strong>snapshot</strong> (a monthly point in time) and optionally
+    an <strong>area</strong> from the dropdowns at the top. The tiles show total size and how
+    much of that is "stale" — not accessed in over 1, 2, or 4 years. The table below lists every
+    directory in the current view; click a column header to sort, or type in the search box to
+    filter by name.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Area Evolution</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Pick an area and, optionally, one directory within it. Three charts show size and staleness
+    over time: for {% if is_admin %}the whole institute{% else %}all the areas you have access to{% endif %}, for the selected area, and (if you pick one) for a single
+    directory. Use the <strong>year</strong> dropdown to focus on one year at a time — only years
+    that actually have data are offered.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Group Leader Evolution</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Pick a group leader (PI) — the dropdown only ever lists leaders you have access to, same
+    access rules as everywhere else — to see their storage stacked by <strong>tier</strong>
+    (Archive / Legacy / Scratch) over time, rather than by staleness. Use the dropdown above the
+    chart to switch what's stacked: total size, or one of the staleness thresholds. "Total size"
+    updates daily; the staleness options only update once a month, from the Diskover crawl. Below
+    the chart: a table of this leader's directories, and one chart per directory (click "Show
+    chart" to load one). "Download PDF Report" builds a complete report, loading any charts you
+    haven't already expanded so nothing is left out. A leader's directories aren't only the ones
+    named after them — an admin can also link other directories to them (for example a shared
+    Scratch/Projects folder), so this table can include more than the name alone suggests.
+    {% if is_admin %}Admins also get a second chart here, "All group leaders combined" — the same
+    tier breakdown but institute-wide instead of just this leader.{% endif %}
+  </p>
+
+  <h3 style="margin-bottom:6px;">Duplicate Files</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Pick a group leader and a size tolerance (exact match, or within a %) to find files that are
+    likely duplicates — same filename and a similar size — across every directory that leader has,
+    including any linked directories (see "Group Leader Evolution" above). <strong>This is a
+    heuristic, not proof</strong> — matching filename and size doesn't guarantee identical content.
+    Before deleting anything based on this list, compare an MD5/SHA checksum of both files and only
+    treat them as true duplicates if the checksums match exactly.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Trend charts (📈)</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Click the 📈 icon next to any directory, anywhere in the dashboard, to open a popup showing
+    its history. Each older month is shown as a single point (its last recorded value); the
+    current month shows every day it has data for. Points are also styled by source: a solid ●
+    is a monthly crawl snapshot, a hollow ○ is a daily reading from Isilon — hover a point to see
+    which.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Subdirectories (📂) and Biggest Files (📄)</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Where available, a 📂 icon next to a directory opens a breakdown of what's inside it —
+    a chart and table of its immediate subfolders, colour-coded by relative size (red = largest,
+    green = smallest). A 📄 icon on those same subfolder rows opens its <strong>Biggest Files</strong>
+    page — a size-by-extension breakdown and the 1000 biggest individual files in that specific
+    subfolder. Both are only collected for group/PI-style directories, so you won't see them
+    everywhere. A note on the Subdirectories page explains why its numbers can lag slightly behind
+    the parent directory's own total (see "Why don't the numbers always match exactly?" below).
+  </p>
+
+  <h3 style="margin-bottom:6px;">Big Files</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Pick a group leader, then an area, from the dropdowns at the top. You'll get a "storage
+    composition by file type" chart for every one of their directories in that area combined, and
+    a list of the single biggest files across all of them (not just one folder at a time — see
+    "What do the 🔴🟡🟢 colours mean?" below for how that chart is colour-coded). Below that, a
+    <strong>Folder breakdown</strong> groups those same biggest files by folder (1–3 levels below
+    the group leader, adjustable) so you can spot which specific subfolder is worth cleaning up. A
+    summary row above the chart (total size, dismissed/addressed size, files listed) updates live
+    as you go, and each section can be collapsed with the ▾/▸ button in its corner if you don't
+    need to see it right now — that stays condensed next time you visit, too.
+  </p>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Both the extension list and the folder breakdown let you mark things as dealt with — a ✕ next
+    to an extension, or "✓ Mark addressed" next to a folder — which hides them (with a "show
+    dismissed"/"show addressed" option to bring them back) from those lists <em>and</em> from the
+    biggest-files table below. <strong>This is saved in your browser only</strong> — it's a
+    personal to-do list, not shared with other users, other devices, or admins, and clearing your
+    browser data resets it.
+  </p>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    The extension chart and biggest-files list come from the monthly crawl, and can lag behind the
+    current month if that leader's file-stats scan isn't finished yet — the page falls back to the
+    latest month that actually has the data and shows a "Data as of ..." note (amber when it's
+    showing a past month rather than the current one).
+  </p>
+
+  <h3 style="margin-bottom:6px;">Data Management Guide</h3>
+  <p style="margin-bottom:0; line-height:1.7;">
+    Where research data should and shouldn't live, good habits, metadata, recovering deleted
+    files, sharing data with collaborators, and a downloadable presentation with more detail.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Downloading data</h2>
+  <p style="line-height:1.7; margin-bottom:12px;">
+    Any sortable table has a <strong>⬇ CSV</strong> button — it exports exactly what's currently
+    visible, respecting whatever filter or sort you've applied.
+  </p>
+  <p style="line-height:1.7; margin-bottom:0;">
+    Pages with charts also have a <strong>⬇ Download PDF Report</strong> button, which bundles the
+    summary tiles and every chart on that page into one PDF, one chart per page.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Understanding the numbers</h2>
+
+  <h3 style="margin-bottom:6px;">What does "stale" mean?</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Stale size is based on when a file was last <strong>accessed</strong> (read), not when it was
+    last modified — a file nobody has opened in years still counts as stale even if it was never
+    edited. The colours are consistent everywhere: green for &gt;1yr, amber for &gt;2yr, red for &gt;4yr.
+  </p>
+
+  <h3 style="margin-bottom:6px;">What do the area names mean?</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Most areas are labelled as a storage <strong>tier</strong> and a <strong>category</strong>,
+    e.g. "Legacy - Groups" or "Scratch - Projects" — tiers are Legacy (an older primary-storage
+    tier, no longer where new data should go), Scratch (temporary/working space), Archive, and
+    Deep Archive; categories are Groups (research group folders), Platforms, and Projects. A few
+    areas that don't fit this pattern
+    (User Homes, Instruments, Informatics Common, HPC Software, Services, Reference Data) keep
+    their own descriptive name.
+  </p>
+
+  <h3 style="margin-bottom:6px;">What do the 🔴🟡🟢 colours mean?</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    On Big Files and the per-directory Biggest Files pages, each file extension (<code>.gz</code>,
+    <code>.bam</code>, etc.) is colour-coded by a storage action plan:
+    <span style="color:var(--red)">🔴 ACT</span> — normally safe to delete, migrate, or convert
+    (temporary, intermediate, or regenerable files); <span style="color:var(--amber)">🟡 WATCH</span>
+    — may be legitimate, worth a look before deciding; <span style="color:var(--green)">🟢 KEEP</span>
+    — normally legitimate research data or output, no action needed from the extension alone. A
+    grey/uncoloured extension just hasn't been classified yet. Hover any slice of the chart, or
+    look at the list next to it, for the specific reasoning behind that extension's colour.
+    {% if is_admin %}These classifications are editable — see "Admin" below.{% endif %}
+  </p>
+
+  <h3 style="margin-bottom:6px;">Why don't the numbers always match exactly?</h3>
+  <p style="margin-bottom:0; line-height:1.7;">
+    This dashboard combines two different sources: a monthly crawl gives staleness (the >1yr/2yr/4yr
+    figures) and subdirectory-level detail, while a separate daily feed gives more frequent,
+    more accurate top-level directory size. Where both cover the same directory, the size shown
+    updates daily even though staleness only updates monthly — so a subdirectory breakdown can
+    occasionally lag a day or two behind its parent directory's own total. This is expected, not
+    an error.
+  </p>
+</div>
+
+{% if is_admin %}
+<div class="card">
+  <h2>Admin-only pages</h2>
+  <p style="color:var(--muted); margin-bottom:12px;">
+    The three "Admin (... tab)" sections below are all reached from the single <strong>Admin</strong>
+    nav link — it opens with a small tab bar (Settings / Access Control / Extension Actions) at the
+    top so you can switch between them without going back to the nav.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Storage Alerts &amp; Insights</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Lists directories, across every enabled area, with a big enough size change — up or
+    down — over the last 7 days and/or since the start of the current month (or pick a past
+    month for a single start-vs-end delta), so you can spot runaway growth or a large deletion
+    without having to check every directory by hand. Thresholds are adjustable from the page.
+    Below the alerts table, a "Biggest potential duplicate-file savings" card ranks every group
+    leader by estimated reclaimable space from likely-duplicate files (see "Duplicate Files"
+    above), so you don't have to open each leader's page individually to find the biggest wins.
+  </p>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Below that, "Shared dataset opportunities" (collapsed by default — click ▸ to expand) looks
+    across <em>different</em> group leaders instead of within one: big files (10 GB+, adjustable
+    up to 25/50 GB on the page to keep the list short) that appear to be the same file kept
+    independently by more than one group — e.g. two groups who've each downloaded their own copy
+    of the same external dataset. That's a possible sign the data could live in one shared,
+    commonly-accessible place instead of being duplicated across groups. Same filename+size
+    heuristic and MD5-verification caveat as Duplicate Files.
+  </p>
+  <p style="margin-bottom:0; line-height:1.7;">
+    "Most files" ranks subdirectories by individual file count, not size — useful since millions
+    of tiny files can be a problem (slow to back up or scan) even when the total size isn't large.
+    Click "View" to open that directory's Biggest Files page. A quick-jump bar at the top of the
+    page links straight to any of these four sections.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Institute Trends</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    An institute-wide version of the Group Leader Evolution chart: total storage stacked by tier
+    (Legacy / Scratch / Archive / Deep Archive) over time, with tiles showing each tier's change
+    since the last snapshot, and an "All years" option alongside the usual single-year view.
+    Unlike other trend charts, the current month shows as one point rather than day-by-day.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Admin (Settings tab)</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Turn storage areas on or off for the normal (non-admin) views. Disabling an area here hides
+    it from Overview and Area Evolution for <strong>everyone</strong> — this is a global setting,
+    not personal to you.
+  </p>
+
+  <h3 style="margin-bottom:6px;">Admin (Access Control tab)</h3>
+  <p style="margin-bottom:12px; line-height:1.7;">
+    Controls who can see what. <strong>Full Access Users</strong> lets you name specific usernames
+    that bypass all restrictions — this grants full <em>data</em> visibility, but not access to
+    these admin pages themselves, which stay restricted to Informatics' own LDAP group.
+    <strong>Directory Group Rules</strong> maps an LDAP group to a
+    directory path prefix, so members of that group only see directories under that prefix (plus
+    their own User Homes folder). Pick an area first and the path field will suggest real
+    directories that exist in it. <strong>Hidden Group Leaders</strong> lets you hide a leader from
+    the Storage Alerts &amp; Insights duplicate-file leaderboard, for any reason — it's reversible at any time and
+    doesn't affect anything else: that leader and their data still show up normally everywhere
+    else in the dashboard (Big Files, Duplicate Files, Group Leader Evolution, Area Evolution,
+    Directory Explorer, Overview).
+  </p>
+
+  <h3 style="margin-bottom:6px;">Admin (Extension Actions tab)</h3>
+  <p style="margin-bottom:0; line-height:1.7;">
+    Edits the 🔴🟡🟢 storage action plan behind the colours everyone sees on Big Files and Biggest
+    Files (see "What do the 🔴🟡🟢 colours mean?" above). Click "Edit" next to any extension to
+    change its category or the reasoning text shown in the chart's tooltip/legend, or add a brand
+    new extension the same way. Removing an extension here doesn't delete any data — it just goes
+    back to showing as unclassified (grey) on the charts.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

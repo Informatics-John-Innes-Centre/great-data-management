@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <select id="yearSelect" title="Year" onchange="onYearChange()"></select>
+  <button class="btn-sm" style="margin-left:auto"
+          data-subtitle="Institute Trends{% if latest_snapshot %} · Snapshot: {{ latest_snapshot.run_date }}{% endif %}"
+          onclick="downloadInstituteTrendsReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  Every enabled area, institute-wide, stacked by storage tier — collapsing category (Groups,
+  Platforms, Projects all sum together within a tier) so the big-picture tendency is easy to read
+  at a glance. Areas outside the Tier - Category grid (User Homes, Instruments, Services, ...) are
+  grouped into "Other". Admin-only.
+  {% if latest_snapshot %}Latest snapshot: <strong>{{ latest_snapshot.run_date }}</strong>.{% endif %}
+</p>
+
+<div class="tiles" id="tierTiles">
+  {% for t in tier_tiles %}
+  <div class="tile"{% if t.tier == "Total" %} id="instituteTotalTile" style="border-color:var(--accent); border-width:2px;"{% endif %}>
+    <div class="label"{% if t.tier == "Total" %} style="color:var(--accent); font-weight:600;"{% endif %}>{{ t.tier }}</div>
+    <div class="value"{% if t.tier == "Total" %} id="instituteTotalValue"{% endif %}>{{ human_bytes(t.size_bytes) }}</div>
+    <div class="sub{% if t.delta_bytes is none %} zero{% elif t.delta_bytes > 0 %} up{% elif t.delta_bytes < 0 %} down{% endif %}"{% if t.tier == "Total" %} id="instituteTotalSub"{% endif %}>
+      {% if t.delta_bytes is none %}
+        no prior snapshot
+      {% elif t.delta_bytes == 0 %}
+        no change since last month
+      {% elif t.delta_bytes > 0 %}
+        +{{ human_bytes(t.delta_bytes) }} since last month
+      {% else %}
+        {{ human_bytes(t.delta_bytes) }} since last month
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% if not tier_tiles %}
+  <div class="tile"><div class="label">No data</div><div class="value">—</div></div>
+  {% endif %}
+</div>
+
+<p id="instituteTotalHiddenNote" style="color:var(--muted); font-size:12px; margin:-12px 0 16px; display:none;">
+  ⓘ Total excludes tier(s) hidden via the chart legend below — click a legend item to show it again.
+</p>
+
+<div class="chart-box" style="margin-bottom:20px;">
+  <div class="card-header" style="margin-bottom:14px;">
+    <h3 style="margin-bottom:0;">Institute Evolution (by storage tier)</h3>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="instituteTierChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+      <select id="instituteTierMetricSelect" onchange="loadInstituteTierChart()">
+        <option value="size" selected>Total size</option>
+        <option value="stale1">Stale &gt;1yr</option>
+        <option value="stale2">Stale &gt;2yr</option>
+        <option value="stale4">Stale &gt;4yr</option>
+      </select>
+      <select id="instituteTierViewSelect" onchange="renderInstituteTierChartForCurrentView()" title="Absolute size vs. each tier's share of the total">
+        <option value="absolute" selected>Absolute size (TB)</option>
+        <option value="percentage">% of total (composition)</option>
+      </select>
+    </div>
+  </div>
+  <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+    "Total size" includes daily resolution (merged from Isilon SmartQuotas) for the current month;
+    the staleness metrics only update once a month, from the Diskover crawl. "% of total" shows
+    each tier's <em>share</em> of storage over time (always summing to 100%) — useful for spotting
+    a tier shrinking in proportion even while overall storage keeps growing.
+  </p>
+  {# base.html's generic ".chart-box canvas { max-height: 280px; }" rule would
+     otherwise clip this chart back down regardless of Chart.js's own
+     aspectRatio setting — overridden here (inline style beats a class
+     selector) so the taller aspectRatio in currentTierChartOpts() actually
+     takes visual effect. #}
+  <canvas id="instituteTierChart" style="max-height:none;"></canvas>
+</div>
+
+<script>
+let instituteTierTiers = [];
+let instituteTierSeries = [];
+
+// Per-tier current size/delta (bytes), excluding the Total entry — keyed by
+// the same ("Core"-renamed) tier name used as the chart's dataset label, so
+// recomputeInstituteTotal() can look values up directly from a legend click.
+const TIER_TILE_DATA = {{ tier_tiles | selectattr("tier", "ne", "Total") | list | tojson }};
+
+// Called on every legend click (see base.html's renderTierChart) and once
+// right after each fresh render, so the Total tile always matches exactly
+// which tiers are currently visible in the chart — summing only those,
+// rather than always showing the full institute-wide total regardless of
+// what's been hidden.
+function recomputeInstituteTotal(chart) {
+  const valueEl = document.getElementById("instituteTotalValue");
+  const subEl = document.getElementById("instituteTotalSub");
+  const noteEl = document.getElementById("instituteTotalHiddenNote");
+  if (!valueEl || !subEl) return;
+
+  let totalSize = 0, totalDelta = 0, deltaKnown = true, anyVisible = false, anyHidden = false;
+  chart.data.datasets.forEach((ds, i) => {
+    const tile = TIER_TILE_DATA.find(t => t.tier === ds.label);
+    if (!tile) return;
+    if (chart.isDatasetVisible(i)) {
+      anyVisible = true;
+      totalSize += tile.size_bytes;
+      if (tile.delta_bytes === null || tile.delta_bytes === undefined) deltaKnown = false;
+      else totalDelta += tile.delta_bytes;
+    } else {
+      anyHidden = true;
+    }
+  });
+
+  valueEl.textContent = anyVisible ? humanBytesJs(totalSize) : "—";
+  subEl.className = "sub";
+  if (!anyVisible) {
+    subEl.textContent = "no tiers shown";
+    subEl.classList.add("zero");
+  } else if (!deltaKnown) {
+    subEl.textContent = "no prior snapshot";
+    subEl.classList.add("zero");
+  } else if (totalDelta === 0) {
+    subEl.textContent = "no change since last month";
+    subEl.classList.add("zero");
+  } else if (totalDelta > 0) {
+    subEl.textContent = `+${humanBytesJs(totalDelta)} since last month`;
+    subEl.classList.add("up");
+  } else {
+    subEl.textContent = `${humanBytesJs(totalDelta)} since last month`;
+    subEl.classList.add("down");
+  }
+  if (noteEl) noteEl.style.display = anyHidden ? "" : "none";
+}
+
+// populateYearSelectFromData() always rebuilds the <select>'s options from
+// scratch, so "All years" has to be re-added after every call — done here
+// rather than in the shared helper since no other page wants this option.
+// The previously-selected value (including "" for "All years" itself) is
+// restored afterward so switching metrics doesn't silently reset the choice.
+function populateYearSelectWithAll(selectId, data) {
+  const sel = document.getElementById(selectId);
+  const previous = sel.value;
+  populateYearSelectFromData(selectId, data);
+  const allOption = document.createElement("option");
+  allOption.value = "";
+  allOption.textContent = "All years";
+  sel.insertBefore(allOption, sel.firstChild);
+  if (previous === "" || Array.from(sel.options).some(o => o.value === previous)) {
+    sel.value = previous;
+  }
+}
+
+// "Legacy" displays as "Core" on this page only — see app.py's
+// INSTITUTE_TRENDS_TIER_DISPLAY_OVERRIDES for the matching tile-label
+// rename. Every other page (Group Leader Evolution, Duplicate Files, the
+// README's "Area naming" section, ...) still says "Legacy".
+function currentTierChartOpts() {
+  const asPercentage = document.getElementById("instituteTierViewSelect").value === "percentage";
+  // aspectRatio 1.6 (Chart.js default is ~2, i.e. flatter) makes the chart
+  // noticeably taller for the same width, so the same honest data spans
+  // more vertical pixels — a bit wider-feeling without distorting anything.
+  return {
+    collapseCurrentMonth: false, tierDisplayNames: { "Legacy": "Core" }, asPercentage, aspectRatio: 2.6,
+    onLegendToggle: recomputeInstituteTotal,
+  };
+}
+
+async function loadInstituteTierChart() {
+  const metric = document.getElementById("instituteTierMetricSelect").value;
+  setLoading("instituteTierChartLoading", true);
+  let payload;
+  try {
+    const resp = await fetch(`/api/institute_evolution_by_tier?metric=${encodeURIComponent(metric)}`);
+    payload = await resp.json();
+  } finally {
+    setLoading("instituteTierChartLoading", false);
+  }
+  instituteTierTiers = payload.tiers || [];
+  instituteTierSeries = payload.series || [];
+  populateYearSelectWithAll("yearSelect", instituteTierSeries);
+  renderTierChart("instituteTierChart", instituteTierTiers, instituteTierSeries, getSelectedYear("yearSelect"), currentTierChartOpts());
+}
+
+function onYearChange() {
+  const year = getSelectedYear("yearSelect");
+  renderTierChart("instituteTierChart", instituteTierTiers, instituteTierSeries, year, currentTierChartOpts());
+}
+
+function renderInstituteTierChartForCurrentView() {
+  renderTierChart("instituteTierChart", instituteTierTiers, instituteTierSeries, getSelectedYear("yearSelect"), currentTierChartOpts());
+}
+
+loadInstituteTierChart();
+
+function downloadInstituteTrendsReportPDF(btn) {
+  downloadReportPDF({
+    filename: "institute-trends-report.pdf",
+    title: "JIC Storage Dashboard — Institute Trends",
+    subtitle: btn.dataset.subtitle,
+    tiles: collectPageTiles(),
+    charts: collectPageCharts(),
+  });
+}
+</script>
+{% endblock %}

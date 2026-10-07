@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <a href="#" class="btn-sm" onclick="history.back(); return false;">← Back</a>
+  <input class="search-box" type="text" id="searchBox" placeholder="Filter subdirectories…"
+         oninput="filterTable(this.value)">
+  <button class="btn-sm" style="margin-left:auto"
+          data-subtitle="Directory: {{ parent.directory }} / {{ parent_label }}{% if latest_snapshot %} · Snapshot: {{ latest_snapshot.run_date }}{% endif %}"
+          onclick="downloadDirectoryReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  Subdirectory sizes are collected monthly by the Diskover crawl, while this directory's own total size may update daily — the two can be temporarily out of sync.
+</p>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Directory</div>
+    <div class="value" style="font-size:16px">{{ parent.directory }}</div>
+    <div class="sub">{{ parent_label }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Subdirectories</div>
+    <div class="value">{{ subdirs | length }}</div>
+    <div class="sub">{% if latest_snapshot %}as of {{ latest_snapshot.run_date }}{% endif %}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Total size (this directory)</div>
+    <div class="value">{{ parent.dir_size_raw or "—" }}</div>
+  </div>
+</div>
+
+{% if subdirs %}
+<div class="charts-grid" style="grid-template-columns: 1fr;">
+  <div class="chart-box">
+    <h3>Subdirectory sizes (TB)</h3>
+    <canvas id="subdirChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Subdirectories{% if latest_snapshot %} — latest snapshot ({{ latest_snapshot.run_date }}){% endif %}</h2>
+    <button class="btn-sm" onclick="downloadTableCSV('subdirTable', 'subdirectories.csv')">⬇ CSV</button>
+  </div>
+  <div class="table-wrap">
+    <table id="subdirTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Name ↕</th>
+          <th onclick="sortTable(1)">Area</th>
+          <th onclick="sortTable(2)">Size ↕</th>
+          {% if has_prev %}
+          <th onclick="sortTable(3)">Δ size</th>
+          {% endif %}
+          <th data-csv="skip">Trend</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in subdirs %}
+        <tr data-name="{{ r.subdirectory | lower }}">
+          <td class="mono">{{ r.subdirectory }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ r.index_label_short }}</td>
+          <td data-value="{{ r.dir_size_bytes or 0 }}">{{ r.dir_size_raw or "—" }}</td>
+          {% if has_prev %}
+          <td class="{% if r.delta_size is none %}zero{% elif r.delta_size > 0 %}up{% elif r.delta_size < 0 %}down{% else %}zero{% endif %}">
+            {% if r.delta_size is not none %}
+              {{ "%+.1f GB" | format(r.delta_size / 1e9) }}
+            {% else %}new{% endif %}
+          </td>
+          {% endif %}
+          <td>
+            <a href="#" data-path="{{ r.path }}" data-name="{{ r.subdirectory }}" onclick="return handleTrendClick(this);"
+               title="Show trend for {{ r.subdirectory }}">📈</a>
+            <a href="{{ url_for('biggest_files', path=r.path) }}"
+               title="Biggest files in {{ r.subdirectory }}">📄</a>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not subdirs %}
+        <tr><td colspan="{{ has_prev and 5 or 4 }}" style="color:var(--muted)">
+          No subdirectory data yet — run the crawler with --subdirs and import it to populate this view.
+        </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+{% if subdirs %}
+// Color each bar green (smallest) -> amber -> red (largest) by relative size,
+// since we don't collect a per-subdirectory age/staleness breakdown (see note
+// on the crawl-cost tradeoff for that).
+function sizeColor(fraction) {
+  const stops = [
+    { p: 0,   c: [52, 211, 153] },  // --green
+    { p: 0.5, c: [251, 191, 36] },  // --amber
+    { p: 1,   c: [248, 113, 113] }, // --red
+  ];
+  let lo = stops[0], hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (fraction >= stops[i].p && fraction <= stops[i + 1].p) {
+      lo = stops[i]; hi = stops[i + 1];
+      break;
+    }
+  }
+  const span = hi.p - lo.p || 1;
+  const t = (fraction - lo.p) / span;
+  const rgb = lo.c.map((v, i) => Math.round(v + (hi.c[i] - v) * t));
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
+const subdirSizesBytes = {{ subdirs | map(attribute="dir_size_bytes") | list | tojson }}.map(b => b || 0);
+const subdirMaxSize = Math.max(...subdirSizesBytes, 1);
+const subdirColors = subdirSizesBytes.map(b => sizeColor(b / subdirMaxSize));
+
+new Chart(document.getElementById("subdirChart"), {
+  type: "bar",
+  data: {
+    labels: {{ subdirs | map(attribute="subdirectory") | list | tojson }},
+    datasets: [{
+      label: "TB",
+      data: subdirSizesBytes.map(b => b / 1e12),
+      backgroundColor: subdirColors,
+    }]
+  },
+  options: {
+    animation: false,
+    indexAxis: "y",
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+      y: { ticks: { color: cssVar('--text'), font: { size: 11 } }, grid: { color: cssVar('--border') } },
+    }
+  }
+});
+{% endif %}
+
+function downloadDirectoryReportPDF(btn) {
+  downloadReportPDF({
+    filename: "directory-report.pdf",
+    title: "JIC Storage Dashboard — Directory Report",
+    subtitle: btn.dataset.subtitle,
+    tiles: collectPageTiles(),
+    charts: collectPageCharts(),
+  });
+}
+
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = (tr.dataset.name || "").includes(lower) ? "" : "none";
+  });
+}
+
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.getElementById("tableBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

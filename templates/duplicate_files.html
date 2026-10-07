@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <form method="get" style="display:contents;">
+    <select name="leader" onchange="setLoading('duplicatesLoading', true); this.form.submit();" title="Group leader">
+      {% for l in leaders %}
+      <option value="{{ l }}" {% if l == selected_leader %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+    <select name="tolerance" onchange="setLoading('duplicatesLoading', true); this.form.submit();" title="Size tolerance">
+      {% for t in tolerance_options %}
+      <option value="{{ t }}" {% if t == tolerance_pct %}selected{% endif %}>
+        {% if t == 0 %}Exact size match{% else %}Within {{ t }}% size{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  <span id="duplicatesLoading" class="loading-badge" style="display:none;">Scanning for duplicates…</span>
+  <button class="btn-sm" style="margin-left:auto" onclick="downloadTableCSV('duplicatesTable', 'duplicate-files.csv')">⬇ CSV</button>
+</div>
+
+<div style="border:1px solid var(--amber); border-radius:8px; padding:12px 16px; margin-bottom:16px; background:rgba(251,191,36,0.08);">
+  <p style="color:var(--amber); margin-bottom:6px;">
+    ⚠ <strong>Do not delete anything based on this list alone.</strong> There's no file-content
+    check available from the crawl — a match here only means the same filename with a similar
+    size, which is a plausible signal, not proof the files are identical. Two unrelated files can
+    share a generic name and a coincidentally similar size.
+  </p>
+  <p style="color:var(--muted); font-size:12px; margin-bottom:0;">
+    If you're not certain two files are really the same, check before removing either one — e.g.
+    compare an MD5/SHA checksum of both (<code>md5sum file1 file2</code>) and only treat them as a
+    true duplicate if the checksums match exactly.
+  </p>
+</div>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  When a group has a copy in <strong>Archive</strong>/<strong>Deep Archive</strong>, that's the one
+  marked "keep" below — Archive is where data is meant to live long-term, so a copy still sitting in
+  Legacy/Scratch is the more likely one to be safe to remove once you've verified it's really the
+  same file. Otherwise, the largest copy is marked "kept" by default.
+</p>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  Possible duplicate files for <strong>{{ selected_leader }}</strong>, across every area they
+  have (their own directories plus any linked projects) — not just one area at a time. Only ever
+  covers each subdirectory's 1000 biggest files, since that's all the crawl keeps; a smaller
+  duplicated file outside that list won't show here.
+  {% if latest_snapshot %}Latest snapshot: {{ latest_snapshot.run_date }}.{% endif %}
+</p>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Possible duplicate groups</div>
+    <div class="value">{{ clusters | length }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Files involved</div>
+    <div class="value">{{ clusters | sum(attribute="count") }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Potentially reclaimable</div>
+    <div class="value" style="color:var(--amber)">{{ human_bytes(total_reclaimable_bytes) }}</div>
+    <div class="sub">keeping just the largest copy of each group</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Possible duplicates</h2>
+  </div>
+  <div class="table-wrap">
+    <table id="duplicatesTable" style="table-layout:fixed;">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)" style="width:22%;">Filename ↕</th>
+          <th onclick="sortTable(1)" style="width:9%;">Area ↕</th>
+          <th style="width:34%;">Path</th>
+          <th onclick="sortTable(3)" style="width:9%;">Size ↕</th>
+          <th onclick="sortTable(4)" style="width:12%;">Modified ↕</th>
+          <th style="width:14%;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clusters %}
+          {% for f in c.files | sort(attribute="size_bytes", reverse=True) %}
+          <tr{% if not f.recommended_keep %} style="color:var(--muted);"{% endif %}>
+            <td class="mono" style="white-space:normal; word-break:break-word; overflow-wrap:break-word; font-size:12px;">{{ c.basename }}{% if loop.first %} ({{ c.count }} copies){% endif %}</td>
+            <td style="font-size:12px;">{{ f.index_label_short }}</td>
+            <td class="mono" style="white-space:normal; word-break:break-word; overflow-wrap:break-word; font-size:12px;">{{ f.display_path }}</td>
+            <td data-value="{{ f.size_bytes or 0 }}">{{ human_bytes(f.size_bytes) }}</td>
+            <td>{{ f.mtime or "—" }}</td>
+            <td>
+              {% if f.recommended_keep %}
+                {% if c.keep_reason == "archive" %}keep — in Archive{% else %}largest — kept{% endif %}
+              {% else %}
+                possible duplicate{% if c.keep_reason == "archive" %} — consider removing{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+        {% if not clusters %}
+        <tr><td colspan="6" style="color:var(--muted)">No possible duplicates found for {{ selected_leader }} at this tolerance.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.querySelector("#duplicatesTable tbody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+// Default view: biggest files first, same as clicking the Size column.
+sortDir[3] = true;
+sortTable(3);
+</script>
+{% endblock %}

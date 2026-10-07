@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <select id="leaderSelect" title="Group leader" onchange="applyFilters()">
+    <option value="">All group leaders</option>
+  </select>
+  <select id="areaSelect" title="Area" onchange="applyFilters()">
+    <option value="">All areas</option>
+  </select>
+  <a href="#" id="duplicateFilesLink" class="btn-sm" style="display:none;"
+     title="Find possible duplicate files for this group leader">🔍 Find duplicate files</a>
+</div>
+
+<p style="color:var(--muted); font-size:12px; margin-bottom:16px;">
+  {% if is_admin %}Covers every group/PI directory tracked by Diskover.{% else %}Covers the directories you have access to.{% endif %}
+  Pick a group leader and area above to see their storage composition and biggest files.
+</p>
+
+<div class="tiles" id="areaSummaryTiles" style="display:none;">
+  <div class="tile">
+    <div class="label">Total size</div>
+    <div class="value" id="tileTotalSize">—</div>
+    <div class="sub" id="tileExtensionCount"></div>
+  </div>
+  <div class="tile">
+    <div class="label">Dismissed extensions</div>
+    <div class="value" id="tileDismissedSize">—</div>
+    <div class="sub" id="tileDismissedSub"></div>
+  </div>
+  <div class="tile">
+    <div class="label">Addressed folders</div>
+    <div class="value" id="tileAddressedSize">—</div>
+    <div class="sub" id="tileAddressedSub"></div>
+  </div>
+  <div class="tile">
+    <div class="label">Biggest files listed</div>
+    <div class="value" id="tileFilesListed">—</div>
+    <div class="sub">of up to 1000</div>
+  </div>
+</div>
+
+<div class="charts-grid" style="grid-template-columns: 1fr;">
+  <div class="chart-box">
+    <div class="card-header" style="margin-bottom:14px;">
+      <h3 style="margin-bottom:0;">Storage composition by file type</h3>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <span id="compositionLoading" class="loading-badge" style="display:none;">Loading…</span>
+        <label style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="showDismissedExtToggle" onchange="updateCompositionChart(); renderLeaderTopFiles();">
+          Show dismissed <span id="dismissedExtCount"></span>
+          <span id="dismissedExtSize" style="color:var(--muted);"></span>
+        </label>
+        <select id="compositionLimitSelect" onchange="updateCompositionChart()">
+          <option value="10">Top 10</option>
+          <option value="20">Top 20</option>
+          <option value="50">Top 50</option>
+          <option value="all">All</option>
+        </select>
+        <button class="collapse-toggle" data-collapse-target="compositionBody"
+                onclick="toggleCollapse('compositionBody', this)" title="Collapse/expand" aria-expanded="true">▾</button>
+      </div>
+    </div>
+    <div id="compositionBody">
+      <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+        Summed across whatever the group-leader/area filters above currently show. Colored by the
+        file-extension action plan — <span style="color:var(--red)">🔴 ACT</span> (safe to
+        delete/migrate), <span style="color:var(--amber)">🟡 WATCH</span> (needs review),
+        <span style="color:var(--green)">🟢 KEEP</span> (normally legitimate),
+        <span style="color:var(--muted)">⚪ unclassified</span>. Dismissing an extension hides it
+        from this list in this browser only, not for other users.
+      </p>
+      <p id="compositionSnapshotNotice" style="color:var(--muted); font-size:12px; margin-bottom:14px; display:none;"></p>
+      <div style="display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:0 0 auto; width:min(320px, 100%);">
+          <canvas id="compositionChart" height="280"></canvas>
+        </div>
+        <div id="compositionLegend" style="flex:1 1 320px; min-width:260px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 style="margin-bottom:0;">Folder breakdown</h3>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="folderBreakdownLoading" class="loading-badge" style="display:none;">Loading…</span>
+      <label style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="showAddressedDirsToggle" onchange="renderFolderBreakdown(); renderLeaderTopFiles();">
+        Show addressed <span id="addressedDirsCount"></span>
+      </label>
+      <select id="folderDepthSelect" onchange="renderFolderBreakdown(); renderLeaderTopFiles(); updateAreaSummaryTiles();">
+        <option value="1">1 level below leader</option>
+        <option value="2" selected>2 levels below leader</option>
+        <option value="3">3 levels below leader</option>
+      </select>
+      <button class="collapse-toggle" data-collapse-target="folderBreakdownCardBody"
+              onclick="toggleCollapse('folderBreakdownCardBody', this)" title="Collapse/expand" aria-expanded="true">▾</button>
+    </div>
+  </div>
+  <div id="folderBreakdownCardBody">
+    <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+      Groups the biggest-files list below by folder path (computed from those files only, so this
+      doesn't cover folders with no files in the top list). Mark a folder "addressed" once you've
+      dealt with it — that's saved in this browser only, not shared with other users.
+    </p>
+    <div class="table-wrap">
+      <table id="folderBreakdownTable">
+        <thead>
+          <tr>
+            <th>Folder</th>
+            <th>Size</th>
+            <th>Files</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="folderBreakdownBody">
+          <tr><td colspan="4" style="color:var(--muted)">Select a group leader and area above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 id="leaderTopFilesTitle">Biggest files</h2>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="leaderTopFilesLoading" class="loading-badge" style="display:none;">Loading…</span>
+      <button class="btn-sm" id="leaderTopFilesToggle" style="display:none" onclick="toggleLeaderTopFilesLimit()">Show all</button>
+      <button class="btn-sm" onclick="downloadLeaderTopFilesCSV()">⬇ CSV</button>
+      <button class="collapse-toggle" data-collapse-target="leaderTopFilesCardBody"
+              onclick="toggleCollapse('leaderTopFilesCardBody', this)" title="Collapse/expand" aria-expanded="true">▾</button>
+    </div>
+  </div>
+  <div id="leaderTopFilesCardBody">
+    <p id="leaderTopFilesSnapshotNotice" style="color:var(--muted); font-size:12px; margin-bottom:14px; display:none;"></p>
+    <div class="table-wrap">
+      <table id="leaderTopFilesTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Path</th>
+            <th>Extension</th>
+            <th>Size</th>
+            <th>Modified</th>
+          </tr>
+        </thead>
+        <tbody id="leaderTopFilesBody">
+          <tr><td colspan="5" style="color:var(--muted)">Select a group leader and area above to see biggest files.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Not shown to the user — the per-subdirectory listing lives in Area
+     Evolution now (redundant here). Kept in the DOM, hidden, purely as the
+     data source populateSelect() reads the leader/area dropdown options
+     from, so nothing above has to be re-fetched or duplicated. -->
+<div style="display:none">
+  <table>
+    <tbody id="tableBody">
+      {% for r in rows %}
+      <tr data-leader="{{ r.directory }}" data-area="{{ r.index_label_short }}"></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function populateSelect(selectId, attr) {
+  const sel = document.getElementById(selectId);
+  const values = new Set(
+    Array.from(document.querySelectorAll("#tableBody tr")).map(tr => tr.dataset[attr]).filter(Boolean)
+  );
+  Array.from(values).sort((a, b) => a.localeCompare(b)).forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    sel.appendChild(opt);
+  });
+}
+populateSelect("leaderSelect", "leader");
+populateSelect("areaSelect", "area");
+
+function applyFilters() {
+  updateCompositionChart();
+  updateLeaderTopFiles();
+  updateDuplicateFilesLink();
+}
+
+// Composition/top-files data falls back to the latest snapshot that
+// actually has rows for this leader (see latest_snapshot_with_rows() in
+// app.py) — not necessarily the current month, if this month's file-stats
+// crawl hasn't reached this leader yet. Always shows the date it's actually
+// from; flags it when that's not the current month, since that's the case
+// where what's on screen can otherwise look confusingly out of date.
+function formatSnapshotNotice(dateStr, elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (!dateStr) {
+    el.style.display = "none";
+    return;
+  }
+  const isCurrentMonth = monthKeyOf(dateStr) === currentMonthKey();
+  el.style.display = "";
+  if (isCurrentMonth) {
+    el.style.color = "var(--muted)";
+    el.textContent = `Data as of ${dateStr}.`;
+  } else {
+    el.style.color = "var(--amber)";
+    el.textContent = `⚠ Data as of ${dateStr} — this month's file-stats scan hasn't reached this ` +
+      `leader yet, so this is the last complete month instead.`;
+  }
+}
+
+function updateSnapshotDateNotices() {
+  formatSnapshotNotice(compositionSnapshotDate, "compositionSnapshotNotice");
+  formatSnapshotNotice(leaderTopFilesSnapshotDate, "leaderTopFilesSnapshotNotice");
+}
+
+function updateDuplicateFilesLink() {
+  const leader = document.getElementById("leaderSelect").value;
+  const link = document.getElementById("duplicateFilesLink");
+  if (!leader) {
+    link.style.display = "none";
+    return;
+  }
+  link.href = `/duplicate-files?leader=${encodeURIComponent(leader)}`;
+  link.style.display = "";
+}
+
+// Collapse/expand toggle for the composition/folder-breakdown/biggest-files
+// sections — toggleCollapse()/applyCollapsedState() are shared, defined in
+// base.html (also used by Group Leader Evolution's all-groups chart).
+applyCollapsedState();
+
+// "Addressed" tracking (folders and extensions) — saved to this browser's
+// localStorage only, never sent to the server or shared with other users.
+// One JSON object under a single key: {"dir:leader::area::folder": true, ...}
+const ACK_STORAGE_KEY = "bigFilesAcknowledged";
+
+function loadAcknowledged() {
+  try {
+    return JSON.parse(localStorage.getItem(ACK_STORAGE_KEY)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function isAcknowledged(key) {
+  return !!loadAcknowledged()[key];
+}
+
+function setAcknowledged(key, value) {
+  const ack = loadAcknowledged();
+  if (value) ack[key] = true; else delete ack[key];
+  try { localStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(ack)); } catch (e) {}
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function humanBytesJs(n) {
+  if (n === null || n === undefined) return "—";
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + " TB";
+  if (n >= 1e9)  return (n / 1e9).toFixed(1) + " GB";
+  if (n >= 1e6)  return (n / 1e6).toFixed(0) + " MB";
+  if (n >= 1e3)  return (n / 1e3).toFixed(0) + " KB";
+  return n.toFixed(0) + " B";
+}
+
+let leaderTopFilesData = [];
+let leaderTopFilesSnapshotDate = null;
+
+async function updateLeaderTopFiles() {
+  const leader = document.getElementById("leaderSelect").value;
+  const area = document.getElementById("areaSelect").value;
+
+  if (!leader || !area) {
+    leaderTopFilesData = [];
+    leaderTopFilesSnapshotDate = null;
+    updateSnapshotDateNotices();
+    renderLeaderTopFiles();
+    renderFolderBreakdown();
+    updateAreaSummaryTiles();
+    return;
+  }
+
+  setLoading("leaderTopFilesLoading", true);
+  setLoading("folderBreakdownLoading", true);
+  try {
+    const params = new URLSearchParams({ leader, area });
+    const resp = await fetch("/api/top_files?" + params.toString());
+    const payload = await resp.json();
+    leaderTopFilesData = payload.files || [];
+    leaderTopFilesSnapshotDate = payload.snapshot_date || null;
+  } finally {
+    setLoading("leaderTopFilesLoading", false);
+    setLoading("folderBreakdownLoading", false);
+  }
+  updateSnapshotDateNotices();
+
+  renderLeaderTopFiles();
+  renderFolderBreakdown();
+  updateAreaSummaryTiles();
+}
+
+// Pure render from the already-fetched leaderTopFilesData — no re-fetch, so
+// this can be called cheaply whenever the dismissed-extensions state
+// changes (dismissing/un-dismissing an extension, or toggling "show
+// dismissed") without hitting the API again. leaderTopFilesData itself
+// stays the full unfiltered fetch, e.g. for CSV export.
+function renderLeaderTopFiles() {
+  const leader = document.getElementById("leaderSelect").value;
+  const area = document.getElementById("areaSelect").value;
+  const tbody = document.getElementById("leaderTopFilesBody");
+  const toggleBtn = document.getElementById("leaderTopFilesToggle");
+  const title = document.getElementById("leaderTopFilesTitle");
+  const showDismissedExt = document.getElementById("showDismissedExtToggle").checked;
+  const showAddressedDirs = document.getElementById("showAddressedDirsToggle").checked;
+  const folderDepth = parseInt(document.getElementById("folderDepthSelect").value, 10);
+
+  if (!leader || !area) {
+    title.textContent = "Biggest files";
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">Select a group leader and area above to see biggest files.</td></tr>';
+    toggleBtn.style.display = "none";
+    return;
+  }
+
+  title.textContent = `Biggest files — ${escapeHtml(leader)} / ${escapeHtml(area)}`;
+
+  // Hides a file if either its extension is dismissed, or the folder it's
+  // in (at the Folder breakdown section's current depth) is marked
+  // addressed — same two "addressed" mechanisms as the sections above,
+  // both applied here so this list only shows what's actually outstanding.
+  const visible = leaderTopFilesData.filter(r => {
+    const extHidden = !showDismissedExt && isAcknowledged(extAckKey(leader, area, r.extension));
+    if (extHidden) return false;
+    const folderKey = folderKeyFor(r.file_path, leader, folderDepth);
+    const dirHidden = !showAddressedDirs && isAcknowledged(folderAckKey(leader, area, folderKey));
+    return !dirHidden;
+  });
+
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted)">${
+      leaderTopFilesData.length
+        ? 'Every file here is dismissed/addressed — check "Show dismissed"/"Show addressed" above to see them.'
+        : "No file-level data yet for this leader/area."
+    }</td></tr>`;
+    toggleBtn.style.display = "none";
+    return;
+  }
+
+  tbody.innerHTML = visible.map(r => `
+    <tr data-rank="${r.rank}"${r.rank > 100 ? ' style="display:none"' : ''}>
+      <td data-value="${r.rank}">${r.rank}</td>
+      <td class="mono" style="white-space:normal; word-break:break-all;">${escapeHtml(r.file_path)}</td>
+      <td>.${escapeHtml(r.extension)}</td>
+      <td data-value="${r.size_bytes}">${humanBytesJs(r.size_bytes)}</td>
+      <td style="color:var(--muted); font-size:12px">${escapeHtml(r.mtime || "—")}</td>
+    </tr>
+  `).join("");
+
+  toggleBtn.style.display = visible.length > 100 ? "" : "none";
+  toggleBtn.dataset.expanded = "false";
+  toggleBtn.textContent = `Show all ${visible.length}`;
+}
+
+// Groups leaderTopFilesData by folder, measured FORWARD from the group
+// leader's own folder (not backward from the filename) — the leader level
+// itself isn't offered as a grouping option since every file here already
+// shares it; depth 1 is the level right below it (e.g. "Rocky"), depth 2
+// one further ("Rocky/Benthamiana"), etc. Anchoring on the leader name
+// keeps this consistent across files at very different nesting depths —
+// counting backward from the filename instead mixed in unrelated area/
+// leader segments for shallow files while going too deep for others.
+// Only reflects files already in the top-files list (same sampling caveat
+// that list already has), not an exhaustive per-folder total.
+function folderKeyFor(filePath, leader, depth) {
+  const parts = filePath.split("/").filter(Boolean);
+  const leaderIdx = parts.indexOf(leader);
+  const afterLeader = leaderIdx === -1
+    ? parts.slice(0, -1)                    // leader not found (shouldn't normally happen) — fall back to full path minus filename
+    : parts.slice(leaderIdx + 1, -1);        // segments between the leader folder and the filename
+  if (!afterLeader.length) return "(directly in leader folder)";
+  return afterLeader.slice(0, depth).join("/");
+}
+
+function computeFolderGroups(files, leader, depth) {
+  const groups = {};
+  files.forEach(f => {
+    const key = folderKeyFor(f.file_path, leader, depth);
+    if (!groups[key]) groups[key] = { folder: key, size_bytes: 0, count: 0 };
+    groups[key].size_bytes += f.size_bytes;
+    groups[key].count += 1;
+  });
+  return Object.values(groups).sort((a, b) => b.size_bytes - a.size_bytes);
+}
+
+function folderAckKey(leader, area, folder) {
+  return `dir:${leader}::${area}::${folder}`;
+}
+
+function renderFolderBreakdown() {
+  const leader = document.getElementById("leaderSelect").value;
+  const area = document.getElementById("areaSelect").value;
+  const depth = parseInt(document.getElementById("folderDepthSelect").value, 10);
+  const showAddressed = document.getElementById("showAddressedDirsToggle").checked;
+  const tbody = document.getElementById("folderBreakdownBody");
+  const countLabel = document.getElementById("addressedDirsCount");
+
+  if (!leader || !area || !leaderTopFilesData.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Select a group leader and area above.</td></tr>';
+    countLabel.textContent = "";
+    return;
+  }
+
+  const groups = computeFolderGroups(leaderTopFilesData, leader, depth);
+  const ack = loadAcknowledged();
+  const isAddressed = g => !!ack[folderAckKey(leader, area, g.folder)];
+  const addressedCount = groups.filter(isAddressed).length;
+  countLabel.textContent = addressedCount ? `(${addressedCount})` : "";
+
+  const visible = groups.filter(g => showAddressed || !isAddressed(g));
+
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--muted)">${
+      groups.length ? 'All folders addressed — check "Show addressed" to see them.' : "No data."
+    }</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = visible.map(g => {
+    const key = folderAckKey(leader, area, g.folder);
+    const addressed = isAddressed(g);
+    return `
+      <tr${addressed ? ' style="opacity:.55;"' : ""}>
+        <td class="mono" style="white-space:normal; word-break:break-all;">${escapeHtml(g.folder)}${addressed ? " ✓" : ""}</td>
+        <td data-value="${g.size_bytes}">${humanBytesJs(g.size_bytes)}</td>
+        <td>${g.count}</td>
+        <td><button class="btn-sm ack-dir-btn" data-ack-key="${escapeHtml(key)}">${addressed ? "↺ Un-mark" : "✓ Mark addressed"}</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  document.querySelectorAll(".ack-dir-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.ackKey;
+      setAcknowledged(key, !isAcknowledged(key));
+      renderFolderBreakdown();
+      renderLeaderTopFiles();
+      updateAreaSummaryTiles();
+    });
+  });
+}
+
+function toggleLeaderTopFilesLimit() {
+  const btn = document.getElementById("leaderTopFilesToggle");
+  const showingAll = btn.dataset.expanded === "true";
+  const rows = document.querySelectorAll("#leaderTopFilesBody tr[data-rank]");
+  rows.forEach(tr => {
+    if (parseInt(tr.dataset.rank, 10) > 100) {
+      tr.style.display = showingAll ? "none" : "";
+    }
+  });
+  btn.dataset.expanded = showingAll ? "false" : "true";
+  btn.textContent = showingAll ? `Show all ${rows.length}` : "Show top 100";
+}
+
+// Always exports the full fetched list (up to 1000), regardless of the
+// top-100/show-all toggle — same "report gets everything, screen gets a
+// readable slice" approach used on the per-directory biggest-files page.
+function downloadLeaderTopFilesCSV() {
+  const rows = [["#", "Path", "Extension", "Size (bytes)", "Modified"]];
+  leaderTopFilesData.forEach(r => {
+    rows.push([r.rank, r.file_path, "." + r.extension, r.size_bytes, r.mtime || ""]);
+  });
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\r\n");
+  triggerDownload(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "leader-top-files.csv");
+}
+
+// Slice colors follow the file-extension action plan (red=act, yellow=watch,
+// green=keep) rather than an arbitrary per-extension color, so the chart
+// itself shows what needs attention — not just what's biggest. Same-category
+// slices are shaded lighter/darker by size (not a flat color) so they stay
+// distinguishable from each other within the category.
+const CATEGORY_HUES = { red: 0, yellow: 40, green: 155 };
+const CATEGORY_LABELS = { red: "🔴 ACT", yellow: "🟡 WATCH", green: "🟢 KEEP" };
+
+function categoryColors(items) {
+  const countByCategory = {};
+  items.forEach(d => { countByCategory[d.category] = (countByCategory[d.category] || 0) + 1; });
+  const seenByCategory = {};
+  return items.map(d => {
+    if (!d.category || !(d.category in CATEGORY_HUES)) return "hsl(220, 8%, 45%)"; // unclassified, flat gray
+    const hue = CATEGORY_HUES[d.category];
+    const total = countByCategory[d.category];
+    const idx = seenByCategory[d.category] || 0;
+    seenByCategory[d.category] = idx + 1;
+    const lightness = total > 1 ? 38 + (idx / (total - 1)) * 30 : 50; // biggest = darkest, 38%..68%
+    return `hsl(${hue}, 70%, ${lightness}%)`;
+  });
+}
+
+let compositionTotalBytes = 0;
+let compositionCurrentData = [];
+let compositionAllData = [];
+let compositionSnapshotDate = null;
+const compositionChart = new Chart(document.getElementById("compositionChart"), {
+  type: "doughnut",
+  data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
+  options: {
+    animation: false,
+    plugins: {
+      legend: { display: false }, // replaced by the custom #compositionLegend panel
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const pct = compositionTotalBytes ? (ctx.parsed * 1e9 / compositionTotalBytes * 100) : 0;
+            const d = compositionCurrentData[ctx.dataIndex];
+            const tag = d && d.category ? CATEGORY_LABELS[d.category] : "⚪ Unclassified";
+            return [` ${ctx.label}: ${pct.toFixed(1)}% (${ctx.parsed.toFixed(1)} GB) — ${tag}`]
+              .concat(d && d.phrase ? [` ${d.phrase}`] : []);
+          }
+        }
+      }
+    }
+  }
+});
+
+function extAckKey(leader, area, extension) {
+  return `ext:${leader}::${area}::${extension}`;
+}
+
+function renderCompositionLegend(items, colors, leader, area) {
+  const container = document.getElementById("compositionLegend");
+  if (!items.length) {
+    container.innerHTML = '<p style="color:var(--muted); font-size:12px;">No extension data for this selection yet.</p>';
+    return;
+  }
+  container.innerHTML = items.map((d, i) => {
+    const pct = compositionTotalBytes ? (d.total_size_bytes / compositionTotalBytes * 100) : 0;
+    const tag = d.category ? CATEGORY_LABELS[d.category] : "⚪ unclassified";
+    const explanation = d.phrase
+      ? `<div style="color:var(--muted); font-size:11px; margin-top:1px;">${escapeHtml(d.phrase)}</div>` : "";
+    const key = extAckKey(leader, area, d.extension);
+    const dismissed = isAcknowledged(key);
+    return `
+      <div style="display:flex; gap:8px; align-items:flex-start; padding:5px 0; border-bottom:1px solid var(--border); ${dismissed ? "opacity:.55;" : ""}">
+        <span style="flex:0 0 auto; width:11px; height:11px; border-radius:3px; margin-top:3px; background:${colors[i]};"></span>
+        <div style="flex:1 1 auto; min-width:0;">
+          <div style="display:flex; justify-content:space-between; gap:8px; font-size:12px;">
+            <span class="mono">.${escapeHtml(d.extension)}${dismissed ? " ✓" : ""}</span>
+            <span style="color:var(--muted); white-space:nowrap;">${tag} · ${pct.toFixed(1)}%</span>
+          </div>
+          ${explanation}
+        </div>
+        <button class="btn-sm ack-ext-btn" data-ack-key="${escapeHtml(key)}" style="flex:0 0 auto;">${dismissed ? "↺" : "✕"}</button>
+      </div>
+    `;
+  }).join("");
+
+  document.querySelectorAll(".ack-ext-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.ackKey;
+      setAcknowledged(key, !isAcknowledged(key));
+      updateCompositionChart();
+      renderLeaderTopFiles();
+    });
+  });
+}
+
+async function updateCompositionChart() {
+  const leader = document.getElementById("leaderSelect").value;
+  const area = document.getElementById("areaSelect").value;
+  const limitValue = document.getElementById("compositionLimitSelect").value;
+  const showDismissed = document.getElementById("showDismissedExtToggle").checked;
+
+  const params = new URLSearchParams();
+  if (leader) params.set("leader", leader);
+  if (area) params.set("area", area);
+
+  setLoading("compositionLoading", true);
+  let data;
+  try {
+    const resp = await fetch("/api/extension_totals?" + params.toString());
+    const payload = await resp.json();
+    data = payload.extensions || [];
+    compositionSnapshotDate = payload.snapshot_date || null;
+  } finally {
+    setLoading("compositionLoading", false);
+  }
+  updateSnapshotDateNotices();
+  // % is always against the full total, regardless of what's dismissed —
+  // otherwise percentages would shift as you dismiss things, which is confusing.
+  compositionTotalBytes = data.reduce((sum, d) => sum + d.total_size_bytes, 0);
+  compositionAllData = data;
+
+  const dismissedCount = data.filter(d => isAcknowledged(extAckKey(leader, area, d.extension))).length;
+  document.getElementById("dismissedExtCount").textContent = dismissedCount ? `(${dismissedCount})` : "";
+
+  const visible = showDismissed ? data : data.filter(d => !isAcknowledged(extAckKey(leader, area, d.extension)));
+  const limit = limitValue === "all" ? visible.length : parseInt(limitValue, 10);
+  const top = visible.slice(0, limit);
+  compositionCurrentData = top;
+  const colors = categoryColors(top);
+
+  compositionChart.data.labels = top.map(d => "." + d.extension);
+  compositionChart.data.datasets[0].data = top.map(d => d.total_size_bytes / 1e9);
+  compositionChart.data.datasets[0].backgroundColor = colors;
+  compositionChart.update();
+
+  renderCompositionLegend(top, colors, leader, area);
+  updateAreaSummaryTiles();
+}
+
+function updateAreaSummaryTiles() {
+  const leader = document.getElementById("leaderSelect").value;
+  const area = document.getElementById("areaSelect").value;
+  const tiles = document.getElementById("areaSummaryTiles");
+
+  if (!leader || !area) {
+    tiles.style.display = "none";
+    return;
+  }
+  tiles.style.display = "";
+
+  const ack = loadAcknowledged();
+
+  document.getElementById("tileTotalSize").textContent = humanBytesJs(compositionTotalBytes);
+  document.getElementById("tileExtensionCount").textContent = `${compositionAllData.length} extension${compositionAllData.length === 1 ? "" : "s"}`;
+
+  const dismissed = compositionAllData.filter(d => ack[extAckKey(leader, area, d.extension)]);
+  const dismissedBytes = dismissed.reduce((sum, d) => sum + d.total_size_bytes, 0);
+  const dismissedPct = compositionTotalBytes ? (dismissedBytes / compositionTotalBytes * 100) : 0;
+  document.getElementById("tileDismissedSize").textContent = dismissed.length ? humanBytesJs(dismissedBytes) : "—";
+  document.getElementById("tileDismissedSub").textContent = dismissed.length
+    ? `${dismissed.length} ext. · ${dismissedPct.toFixed(1)}%`
+    : "none dismissed";
+  const dismissedSizeLabel = document.getElementById("dismissedExtSize");
+  if (dismissedSizeLabel) {
+    dismissedSizeLabel.textContent = dismissed.length ? `· ${humanBytesJs(dismissedBytes)}` : "";
+  }
+
+  const depthSelect = document.getElementById("folderDepthSelect");
+  const depth = depthSelect ? parseInt(depthSelect.value, 10) : 2;
+  const groups = computeFolderGroups(leaderTopFilesData, leader, depth);
+  const addressedGroups = groups.filter(g => ack[folderAckKey(leader, area, g.folder)]);
+  const addressedBytes = addressedGroups.reduce((sum, g) => sum + g.size_bytes, 0);
+  document.getElementById("tileAddressedSize").textContent = addressedGroups.length ? humanBytesJs(addressedBytes) : "—";
+  document.getElementById("tileAddressedSub").textContent = addressedGroups.length
+    ? `${addressedGroups.length} folder${addressedGroups.length === 1 ? "" : "s"} (top-files size)`
+    : "none addressed";
+
+  document.getElementById("tileFilesListed").textContent = leaderTopFilesData.length;
+}
+
+applyFilters();
+</script>
+{% endblock %}

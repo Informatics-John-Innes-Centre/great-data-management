@@ -1,0 +1,4 @@
+flask>=3.0
+mysql-connector-python>=8.4
+gunicorn>=22.0
+ldap3>=2.9

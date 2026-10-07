@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display:flex; gap:18px; flex-wrap:wrap; margin-bottom:16px; font-size:13px;">
+  <a href="#notableChangesCard" onclick="return jumpToSection('notableChangesCard', 'notableChangesBody');">Notable changes</a>
+  <a href="#duplicateLeaderboardCard" onclick="return jumpToSection('duplicateLeaderboardCard', 'duplicateLeaderboardBody_wrap');">Duplicate-file savings</a>
+  <a href="#crossLeaderCard" onclick="return jumpToSection('crossLeaderCard', 'crossLeaderBody');">Shared dataset opportunities</a>
+  <a href="#mostFilesCard" onclick="return jumpToSection('mostFilesCard', 'mostFilesBody_wrap');">Most files</a>
+</div>
+
+<div class="card" id="notableChangesCard">
+  <div class="card-header">
+    <h2>Notable changes</h2>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <button class="btn-sm" onclick="downloadTableCSV('alertsTable', 'growth-alerts.csv')">⬇ CSV</button>
+      <button class="collapse-toggle" data-collapse-target="notableChangesBody" data-default-collapsed="true"
+              onclick="toggleCollapse('notableChangesBody', this)" title="Collapse/expand" aria-expanded="false">▸</button>
+    </div>
+  </div>
+  <div id="notableChangesBody" style="display:none;">
+  <div class="controls">
+    <form method="get" style="display:contents;" onsubmit="this.action = window.location.pathname + '#notableChangesCard';">
+      <select name="year" onchange="this.form.requestSubmit()" title="Year">
+        {% for y in year_options %}
+        <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select name="month" onchange="this.form.requestSubmit()" title="Month">
+        {% for m in month_options %}
+        <option value="{{ m.value }}" {% if m.value == selected_month %}selected{% endif %}>{{ m.label }}</option>
+        {% endfor %}
+      </select>
+      <select name="pct" onchange="this.form.requestSubmit()" title="Percent threshold">
+        {% for p in pct_options %}
+        <option value="{{ p }}" {% if p == threshold_pct %}selected{% endif %}>≥ {{ p }}%</option>
+        {% endfor %}
+      </select>
+      <select name="gb" onchange="this.form.requestSubmit()" title="Size threshold">
+        {% for g in gb_options %}
+        <option value="{{ g.value }}" {% if g.value == threshold_gb %}selected{% endif %}>{{ g.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <p style="color:var(--muted); margin-bottom:16px;">
+    Flags a directory when it changed by at least <strong>{{ threshold_pct }}%</strong> AND at
+    least <strong>{{ threshold_gb_label }}</strong> — either growing or
+    shrinking{% if is_current_month %}, in the last 7 days, since the start of this month, or
+    both{% else %} between the start and end of {{ selected_month }}{% endif %}. Covers every
+    enabled storage area except User Homes (see Settings to enable/disable an area).
+  </p>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="label">Flagged directories</div>
+      <div class="value">{{ alerts | length }}</div>
+      <div class="sub">{% if latest_snap %}as of {{ latest_snap.run_date }}{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="alertsTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Directory ↕</th>
+          <th onclick="sortTable(1)">Area ↕</th>
+          <th onclick="sortTable(2)">Current size ↕</th>
+          {% if is_current_month %}
+          <th onclick="sortTable(3)">Last 7 days ↕</th>
+          <th onclick="sortTable(4)">This month ↕</th>
+          {% else %}
+          <th onclick="sortTable(3)">Start → end of month ↕</th>
+          {% endif %}
+          <th data-csv="skip">Trend</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for a in alerts %}
+        <tr data-name="{{ a.directory | lower }}">
+          <td class="mono">{{ a.directory }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ a.index_label_short }}</td>
+          <td data-value="{{ a.curr_bytes or 0 }}">{{ "%.1f TB" | format((a.curr_bytes or 0) / 1e12) }}</td>
+          {% if is_current_month %}
+          <td data-value="{{ a.week.delta_bytes if a.week.available else 0 }}"
+              class="{% if not a.week.available %}zero{% elif a.week.delta_bytes > 0 %}up{% elif a.week.delta_bytes < 0 %}down{% else %}zero{% endif %}">
+            {% if a.week.available %}
+              {{ a.week.delta_display }} ({{ "%+.0f" | format(a.week.pct) }}%){% if a.week.flagged %} ⚠{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          {% endif %}
+          <td data-value="{{ a.month.delta_bytes if a.month.available else 0 }}"
+              class="{% if not a.month.available %}zero{% elif a.month.delta_bytes > 0 %}up{% elif a.month.delta_bytes < 0 %}down{% else %}zero{% endif %}">
+            {% if a.month.available %}
+              {{ a.month.delta_display }} ({{ "%+.0f" | format(a.month.pct) }}%){% if a.month.flagged %} ⚠{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="#" data-path="{{ a.path }}" data-name="{{ a.directory }}" onclick="return handleTrendClick(this);"
+               title="Show trend for {{ a.directory }}">📈</a>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not alerts %}
+        <tr><td colspan="{{ is_current_month and 6 or 5 }}" style="color:var(--muted)">No directories exceed the threshold for this period.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+</div>
+
+<div class="card" id="duplicateLeaderboardCard">
+  <div class="card-header">
+    <h2>Biggest potential duplicate-file savings</h2>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <button class="btn-sm" onclick="downloadTableCSV('duplicateLeaderboardTable', 'duplicate-leaderboard.csv')">⬇ CSV</button>
+      <button class="collapse-toggle" data-collapse-target="duplicateLeaderboardBody_wrap" data-default-collapsed="true"
+              onclick="toggleCollapse('duplicateLeaderboardBody_wrap', this)" title="Collapse/expand" aria-expanded="false">▸</button>
+    </div>
+  </div>
+  <div id="duplicateLeaderboardBody_wrap" style="display:none;">
+  <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+    Group leaders with the most reclaimable space from possible duplicate files (same filename,
+    size within 1%) — see <a href="{{ url_for('duplicate_files') }}">Duplicate Files</a> for the
+    full per-file breakdown with an adjustable tolerance. Precomputed once a month at import time
+    (not live, unlike the rest of this page), from the
+    {% if duplicate_snap %}{{ duplicate_snap.run_date }}{% else %}—{% endif %} snapshot. Same
+    heuristic caveat as that page: these are <strong>possible</strong> duplicates, not confirmed
+    ones — verify before deleting anything.
+  </p>
+  <div class="table-wrap">
+    <table id="duplicateLeaderboardTable">
+      <thead>
+        <tr>
+          <th onclick="sortDuplicateTable(0)">Group leader ↕</th>
+          <th onclick="sortDuplicateTable(1)">Possible duplicate groups ↕</th>
+          <th onclick="sortDuplicateTable(2)">Reclaimable space ↕</th>
+          <th data-csv="skip">Details</th>
+        </tr>
+      </thead>
+      <tbody id="duplicateLeaderboardBody">
+        {% for d in duplicate_leaders %}
+        <tr>
+          <td class="mono">{{ d.directory }}</td>
+          <td data-value="{{ d.cluster_count }}">{{ d.cluster_count }}</td>
+          <td data-value="{{ d.reclaimable_bytes }}">{{ human_bytes(d.reclaimable_bytes) }}</td>
+          <td><a href="{{ url_for('duplicate_files', leader=d.directory) }}">View</a></td>
+        </tr>
+        {% endfor %}
+        {% if not duplicate_leaders %}
+        <tr><td colspan="4" style="color:var(--muted)">No duplicate-file summary computed yet — runs after the next monthly import.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+</div>
+
+<div class="card" id="crossLeaderCard">
+  <div class="card-header">
+    <h2>Shared dataset opportunities</h2>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <select name="min_gb" onchange="const u = new URL(window.location.href); u.searchParams.set('min_gb', this.value); u.hash = 'crossLeaderCard'; window.location.href = u.toString();" title="Minimum file size">
+        {% for g in cross_leader_min_gb_options %}
+        <option value="{{ g }}" {% if g == cross_leader_min_gb %}selected{% endif %}>{{ g }} GB+</option>
+        {% endfor %}
+      </select>
+      <button class="btn-sm" onclick="downloadTableCSV('crossLeaderTable', 'cross-group-duplicates.csv')">⬇ CSV</button>
+      <button class="collapse-toggle" data-collapse-target="crossLeaderBody" data-default-collapsed="true"
+              onclick="toggleCollapse('crossLeaderBody', this)" title="Collapse/expand" aria-expanded="false">▸</button>
+    </div>
+  </div>
+  <div id="crossLeaderBody" style="display:none;">
+    <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+      Big files ({{ cross_leader_min_gb }} GB+, adjustable above, so this list stays short) that
+      look like the same file kept independently by more than one group
+      leader — e.g. two groups who've each downloaded their own copy of the same external dataset.
+      Unlike the leaderboard above, this deliberately ignores duplicates within a single leader's
+      own scope (that's what <a href="{{ url_for('duplicate_files') }}">Duplicate Files</a> is for) —
+      this is only about data that could potentially move to one shared, commonly-accessible
+      location instead of staying duplicated across groups. Same heuristic caveat applies: filename
+      + size is a plausible signal, not proof — verify (e.g. an MD5/SHA checksum) before acting on
+      anything here. Precomputed once a month at import time, from the
+      {% if cross_leader_snap %}{{ cross_leader_snap.run_date }}{% else %}—{% endif %} snapshot.
+    </p>
+    <div class="table-wrap">
+      <table id="crossLeaderTable" style="table-layout:fixed;">
+        <thead>
+          <tr>
+            <th style="width:20%;">Filename</th>
+            <th style="width:12%;">Leaders involved</th>
+            <th style="width:10%;">Size</th>
+            <th style="width:10%;">Area</th>
+            <th style="width:38%;">Path</th>
+            <th style="width:10%;">Modified</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cross_leader_clusters %}
+            {% for f in c.files %}
+            <tr{% if not loop.first %} style="color:var(--muted);"{% endif %}>
+              <td class="mono" style="white-space:normal; word-break:break-word; overflow-wrap:break-word; font-size:12px;">{{ c.basename }}{% if loop.first %} ({{ c.leader_count }} leaders){% endif %}</td>
+              <td style="font-size:12px;">{{ f.leader }}</td>
+              <td data-value="{{ f.size_bytes or 0 }}">{{ human_bytes(f.size_bytes) }}</td>
+              <td style="font-size:12px;">{{ f.index_label_short }}</td>
+              <td class="mono" style="white-space:normal; word-break:break-word; overflow-wrap:break-word; font-size:12px;">{{ f.file_path }}</td>
+              <td>{{ f.mtime or "—" }}</td>
+            </tr>
+            {% endfor %}
+          {% endfor %}
+          {% if not cross_leader_clusters %}
+          <tr><td colspan="6" style="color:var(--muted)">No cross-group duplicate datasets found at {{ cross_leader_min_gb }} GB+.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="mostFilesCard">
+  <div class="card-header">
+    <h2>Most files</h2>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <div style="display:flex; align-items:center; gap:2px;">
+        <button class="btn-sm" onclick="adjustMostFilesMin(-{{ most_files_min_count_step }})" title="Lower the minimum — show more directories">▼</button>
+        <span style="font-size:12px; color:var(--muted); min-width:95px; text-align:center;">{{ "{:,}".format(most_files_min_count) }}+ files</span>
+        <button class="btn-sm" onclick="adjustMostFilesMin({{ most_files_min_count_step }})" title="Raise the minimum — show fewer directories">▲</button>
+      </div>
+      <button class="btn-sm" onclick="downloadTableCSV('mostFilesTable', 'most-files.csv')">⬇ CSV</button>
+      <button class="collapse-toggle" data-collapse-target="mostFilesBody_wrap" data-default-collapsed="true"
+              onclick="toggleCollapse('mostFilesBody_wrap', this)" title="Collapse/expand" aria-expanded="false">▸</button>
+    </div>
+  </div>
+  <div id="mostFilesBody_wrap" style="display:none;">
+  <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+    Subdirectories with at least {{ "{:,}".format(most_files_min_count) }} individual files
+    (adjustable above — pick a smaller number to see more directories) — a directory can be a
+    problem because of file <em>count</em>, not just size (millions of tiny files are slow to back
+    up, scan, or walk, regardless of how little space they take up). Same scope as Big
+    Files/Duplicate Files: only covers group-leader subdirectories the crawl collects file-stats
+    for, from the
+    {% if most_files_snap %}{{ most_files_snap.run_date }}{% else %}—{% endif %} snapshot.
+  </p>
+  <div class="table-wrap">
+    <table id="mostFilesTable">
+      <thead>
+        <tr>
+          <th onclick="sortMostFilesTable(0)">Group leader ↕</th>
+          <th onclick="sortMostFilesTable(1)">Area ↕</th>
+          <th onclick="sortMostFilesTable(2)">Path ↕</th>
+          <th onclick="sortMostFilesTable(3)">File count ↕</th>
+          <th onclick="sortMostFilesTable(4)">Total size ↕</th>
+          <th data-csv="skip">Details</th>
+        </tr>
+      </thead>
+      <tbody id="mostFilesBody">
+        {% for r in most_files_rows %}
+        <tr>
+          <td class="mono">{{ r.directory }}</td>
+          <td style="font-size:12px;">{{ r.index_label_short }}</td>
+          <td class="mono" style="font-size:12px;">{{ r.path }}</td>
+          <td data-value="{{ r.total_files }}">{{ "{:,}".format(r.total_files) }}</td>
+          <td data-value="{{ r.total_size_bytes or 0 }}">{{ human_bytes(r.total_size_bytes) }}</td>
+          <td><a href="{{ url_for('biggest_files', path=r.path) }}">View</a></td>
+        </tr>
+        {% endfor %}
+        {% if not most_files_rows %}
+        <tr><td colspan="6" style="color:var(--muted)">No directories found with at least {{ "{:,}".format(most_files_min_count) }} files.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+</div>
+
+<script>
+function adjustMostFilesMin(delta) {
+  const current = {{ most_files_min_count }};
+  const next = Math.max(0, current + delta);
+  const u = new URL(window.location.href);
+  u.searchParams.set("min_files", next);
+  u.hash = "mostFilesCard";
+  window.location.href = u.toString();
+}
+
+function jumpToSection(cardId, collapseBodyId) {
+  if (collapseBodyId) {
+    const body = document.getElementById(collapseBodyId);
+    const btn = document.querySelector(`[data-collapse-target="${collapseBodyId}"]`);
+    if (body && btn && body.style.display === "none") {
+      toggleCollapse(collapseBodyId, btn);
+    }
+  }
+  const card = document.getElementById(cardId);
+  if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  return false;
+}
+
+let mostFilesSortDir = {};
+function sortMostFilesTable(col) {
+  const tbody = document.getElementById("mostFilesBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(mostFilesSortDir[col]);
+  mostFilesSortDir = {};
+  mostFilesSortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+// Default view: most files first.
+mostFilesSortDir[3] = true;
+sortMostFilesTable(3);
+</script>
+
+<script>
+let duplicateSortDir = {};
+function sortDuplicateTable(col) {
+  const tbody = document.getElementById("duplicateLeaderboardBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(duplicateSortDir[col]);
+  duplicateSortDir = {};
+  duplicateSortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.getElementById("tableBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+
+{% endblock %}

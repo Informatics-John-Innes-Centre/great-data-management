@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto 20px auto; display:flex; gap:8px;">
+  <a href="{{ url_for('settings') }}" class="btn-sm"
+     style="{% if active_tab == 'settings' %}background:var(--accent); color:#fff;{% endif %}">Settings</a>
+  <a href="{{ url_for('access_admin') }}" class="btn-sm"
+     style="{% if active_tab == 'access' %}background:var(--accent); color:#fff;{% endif %}">Access Control</a>
+  <a href="{{ url_for('extension_actions') }}" class="btn-sm"
+     style="{% if active_tab == 'extensions' %}background:var(--accent); color:#fff;{% endif %}">Extension Actions</a>
+</div>
+
+<div class="card" style="max-width: 1100px; margin: 0 auto 20px auto;">
+  <h2>Full Access Users</h2>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    Informatics users already see everything. Add extra usernames here when they should bypass group and home-directory restrictions.
+  </p>
+
+  <form method="post" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+    <input type="hidden" name="action" value="add_full_access">
+    <input name="username" type="text" placeholder="username" required>
+    <input name="notes" type="text" placeholder="optional note" style="min-width:280px;">
+    <button type="submit">Add Full Access</button>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Notes</th>
+          <th>Updated</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in full_access_users %}
+        <tr>
+          <td class="mono">{{ row.username }}</td>
+          <td>{{ row.notes or "—" }}</td>
+          <td>{{ row.updated_at }}</td>
+          <td>
+            <form method="post"
+                  data-confirm="Remove full access for {{ row.username }}? They will go back to the normal access rules."
+                  onsubmit="return confirmFormSubmit(this);">
+              <input type="hidden" name="action" value="remove_full_access">
+              <input type="hidden" name="username" value="{{ row.username }}">
+              <button type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="max-width: 1100px; margin: 0 auto;">
+  <h2>Directory Group Rules</h2>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    Map directory path prefixes to LDAP group CNs such as `RG-Sanu-Arora` or `Bravo`. Users with matching LDAP groups will only see those directories, plus their own User Homes directory.
+  </p>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    The LDAP group field now suggests only `RG-` groups such as `RG-Sanu-Arora`. Start typing or open the browser's suggestion list.
+  </p>
+
+  <form method="post" style="display:grid; grid-template-columns: 260px 1fr 240px; gap:10px; margin-bottom:12px;">
+    <input type="hidden" name="action" value="add_rule">
+    <select id="rule-area" name="index_label" required>
+      <option value="">Select area</option>
+      {% for area in areas %}
+      <option value="{{ area.value }}">{{ area.label }}</option>
+      {% endfor %}
+    </select>
+    <input id="rule-path-prefix" name="path_prefix" type="text" placeholder="Path prefix, e.g. JIC_Apricot_Primarydata_Research_Groups/Sanu-Arora" required list="path-suggestions">
+    <input name="ldap_group_cn" type="text" placeholder="LDAP group CN, e.g. RG-Sanu-Arora" required list="ldap-group-suggestions">
+    <input name="notes" type="text" placeholder="optional note" style="grid-column: 1 / span 2;">
+    <button type="submit">Save Rule</button>
+  </form>
+
+  <datalist id="path-suggestions">
+  </datalist>
+  <datalist id="ldap-group-suggestions">
+    {% for group_name in ldap_groups %}
+    <option value="{{ group_name }}"></option>
+    {% endfor %}
+  </datalist>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Path Prefix</th>
+          <th>LDAP Group</th>
+          <th>Notes</th>
+          <th>Updated</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rules %}
+        <tr>
+          <td>{{ row.index_label_short }}</td>
+          <td class="mono">{{ row.path_prefix }}</td>
+          <td class="mono">{{ row.ldap_group_cn }}</td>
+          <td>{{ row.notes or "—" }}</td>
+          <td>{{ row.updated_at }}</td>
+          <td>
+            <form method="post"
+                  data-confirm="Remove this access rule ({{ row.ldap_group_cn }} → {{ row.path_prefix }})? Members of that group will lose access to this path until it's re-added."
+                  onsubmit="return confirmFormSubmit(this);">
+              <input type="hidden" name="action" value="remove_rule">
+              <input type="hidden" name="rule_id" value="{{ row.id }}">
+              <button type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="max-width: 1100px; margin: 20px auto 0 auto;">
+  <h2>Hidden Group Leaders</h2>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    Hide a group leader from the <strong>duplicate-file leaderboard on Storage Alerts &amp; Insights</strong>, for
+    any reason. This only affects that one leaderboard: Big Files, Duplicate Files's own
+    per-leader page, Group Leader Evolution, Area Evolution, Directory Explorer, and Overview all
+    still show the leader and their data normally. Reversible at any time — nothing is deleted.
+  </p>
+
+  <form method="post" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+    <input type="hidden" name="action" value="add_hidden_leader">
+    <input name="directory" type="text" placeholder="Group leader name" required list="leader-suggestions" style="min-width:220px;">
+    <input name="notes" type="text" placeholder="optional note" style="min-width:280px;">
+    <button type="submit">Hide from Leaderboard</button>
+  </form>
+
+  <datalist id="leader-suggestions">
+    {% for name in all_leaders %}
+    <option value="{{ name }}"></option>
+    {% endfor %}
+  </datalist>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Group Leader</th>
+          <th>Notes</th>
+          <th>Updated</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in hidden_leaders %}
+        <tr>
+          <td class="mono">{{ row.directory }}</td>
+          <td>{{ row.notes or "—" }}</td>
+          <td>{{ row.updated_at }}</td>
+          <td>
+            <form method="post">
+              <input type="hidden" name="action" value="remove_hidden_leader">
+              <input type="hidden" name="directory" value="{{ row.directory }}">
+              <button type="submit">Unhide</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not hidden_leaders %}
+        <tr><td colspan="4" style="color:var(--muted)">No group leaders are currently hidden.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const pathSuggestions = {{ sample_paths | tojson }};
+const areaSelect = document.getElementById("rule-area");
+const pathInput = document.getElementById("rule-path-prefix");
+const datalist = document.getElementById("path-suggestions");
+
+function refreshPathSuggestions() {
+  const selectedArea = areaSelect.value;
+  const matching = pathSuggestions.filter(row => !selectedArea || row.index_label === selectedArea);
+
+  datalist.innerHTML = "";
+  matching.forEach(row => {
+    const option = document.createElement("option");
+    option.value = row.path;
+    option.label = `${row.index_label_short} / ${row.directory}`;
+    datalist.appendChild(option);
+  });
+}
+
+areaSelect.addEventListener("change", () => {
+  pathInput.value = "";
+  refreshPathSuggestions();
+});
+
+refreshPathSuggestions();
+</script>
+
+{% endblock %}

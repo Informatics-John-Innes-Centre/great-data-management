@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block flashes %}{% endblock %}
+{% block content %}
+
+<style>
+  body {
+    background-image: url('{{ url_for('static', filename='background.png') }}');
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: min(850px, 95vw) auto;
+  }
+
+  footer {
+    background: #000;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 8px;
+    max-width: fit-content;
+    white-space: nowrap;
+    margin: 24px auto 0;
+  }
+</style>
+
+<div style="max-width: 460px; margin: 40px auto; text-align:center;">
+  <div role="img" aria-label="Great Data Management" style="
+    width: 100%; max-width: 380px; aspect-ratio: 2038 / 1560; margin: 0 auto 28px;
+    background-image: url('{{ url_for('static', filename='great_data_management.png') }}');
+    background-repeat: no-repeat; background-position: center; background-size: contain;
+  "></div>
+
+  <div class="card" style="text-align:left;">
+    <h2>Sign in with your JIC user</h2>
+    <p style="color:var(--muted); margin-bottom:14px;">
+      just your username, e.g. <code>jdoe</code>
+    </p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash-messages {{ 'error' if category == 'error' else 'success' }}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if error %}
+      <div class="flash-messages error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <label for="username" style="display:block; margin-bottom:6px; color:var(--muted);">Username</label>
+      <input id="username" name="username" type="text" required style="width:100%; margin-bottom:12px;">
+
+      <label for="password" style="display:block; margin-bottom:6px; color:var(--muted);">Password</label>
+      <input id="password" name="password" type="password" required style="width:100%; margin-bottom:16px;">
+
+      <button type="submit" style="width:100%;">Sign in</button>
+    </form>
+  </div>
+
+  <img src="{{ url_for('static', filename='JIC_Informatics.png') }}"
+       alt="John Innes Centre Informatics"
+       style="width: 110px; height: auto; margin: 32px auto 0;">
+</div>
+
+{% endblock %}
+
+{% block footer %}Great Data Management tool by Miguel Gonzalez-Sanchez{% endblock %}

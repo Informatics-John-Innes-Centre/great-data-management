@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JIC Data Management</title>
+<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+<link rel="icon" href="{{ url_for('static', filename='favicon-32.png') }}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B1FWXG5Q9C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B1FWXG5Q9C');
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --border:   #2a2e3f;
+    --text:     #e2e8f0;
+    --muted:    #8892a4;
+    --accent:   #4f8ef7;
+    --green:    #34d399;
+    --amber:    #fbbf24;
+    --red:      #f87171;
+    --teal:     #2dd4bf;
+  }
+  :root[data-theme="light"] {
+    --bg:       #ffffff;
+    --surface:  #f4f6fa;
+    --border:   #dfe4ee;
+    --text:     #1c2333;
+    --muted:    #5b6478;
+    --accent:   #003976;
+    --green:    #0f9d70;
+    --amber:    #b7791f;
+    --red:      #c53030;
+    --teal:     #6e80ad;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
+         font-size: 14px; line-height: 1.5; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; align-items: flex-start; gap: 16px;
+  }
+  header h1 { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; }
+  header h1 a { display: flex; align-items: center; color: var(--text); text-decoration: none; }
+  header h1 img { height: 60px; width: auto; }
+  .gta-toggle { height: 64px; width: auto; cursor: pointer; opacity: .85; transition: opacity .15s; }
+  .gta-toggle:hover { opacity: 1; }
+
+  nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 4px; margin-left: auto; }
+  nav a { font-size: 13px; color: var(--muted); padding: 4px 10px;
+           border-radius: 6px; transition: background .15s; white-space: nowrap; }
+  nav a:hover { background: var(--border); color: var(--text); text-decoration: none; }
+  .nav-username { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                  max-width: 160px; display: inline-block; vertical-align: middle; }
+  .brand { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .brand a { color: var(--text); text-decoration: none; }
+
+  .theme-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 15px;
+    transition: background .15s, color .15s;
+  }
+  .theme-toggle:hover { background: var(--border); color: var(--text); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 24px 28px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; color: var(--muted);
+              text-transform: uppercase; letter-spacing: .05em; margin-bottom: 16px; }
+
+  .flash-messages {
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .flash-messages:last-child { margin-bottom: 0; }
+  .flash-messages.success { background: rgba(52, 211, 153, .12); color: var(--green); border: 1px solid rgba(52, 211, 153, .3); }
+  .flash-messages.error   { background: rgba(248, 113, 113, .12); color: var(--red); border: 1px solid rgba(248, 113, 113, .3); }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+  select, input {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 12px; font-size: 13px;
+  }
+  select:focus, input:focus { outline: 1px solid var(--accent); }
+  button, .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; transition: opacity .15s;
+  }
+  button:hover, .btn:hover { opacity: .85; }
+
+  /* stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  .tile .value { font-size: 22px; font-weight: 700; }
+  .tile .sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: left; padding: 8px 12px; color: var(--muted);
+              font-weight: 600; font-size: 11px; text-transform: uppercase;
+              letter-spacing: .05em; border-bottom: 1px solid var(--border);
+              white-space: nowrap; cursor: pointer; user-select: none; }
+  thead th:hover { color: var(--text); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody td { padding: 8px 12px; white-space: nowrap; }
+  .mono { font-family: monospace; }
+
+  .up   { color: var(--red); }
+  .down { color: var(--green); }
+  .zero { color: var(--muted); }
+
+  /* chart containers */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+  .chart-box { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 10px; padding: 18px 20px; }
+  .chart-box h3 { font-size: 13px; color: var(--muted); margin-bottom: 14px;
+                  text-transform: uppercase; letter-spacing: .05em; }
+  .chart-box canvas { max-height: 280px; }
+
+  /* modal / trend panel */
+  #trend-panel {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  #trend-panel.open { display: flex; }
+  #trend-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px 28px; width: min(900px, 95vw); max-height: 90vh; overflow-y: auto;
+  }
+  #trend-box h3 { font-size: 15px; margin-bottom: 16px; }
+  #trend-close { float: right; cursor: pointer; color: var(--muted); font-size: 18px; }
+  #trend-close:hover { color: var(--text); }
+
+  .search-box { padding: 6px 12px; font-size: 13px; width: 240px; }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 24px; }
+
+  /* export buttons */
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;
+  }
+  .card-header h2 { margin-bottom: 0; }
+  .btn-sm {
+    background: var(--border); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+    transition: opacity .15s, background .15s; white-space: nowrap;
+  }
+  .btn-sm:hover { background: #333850; }
+
+  .collapse-toggle {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; width: 26px; height: 26px; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+    transition: background .15s, color .15s;
+  }
+  .collapse-toggle:hover { background: var(--border); color: var(--text); }
+
+  .loading-badge {
+    font-size: 12px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .loading-badge::before {
+    content: ""; width: 10px; height: 10px; flex: 0 0 auto;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .app-switcher {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 28px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .app-switcher a { color: var(--muted); text-decoration: none; }
+  .app-switcher a:hover { color: var(--text); text-decoration: underline; }
+  .app-switcher .current { color: var(--text); font-weight: 600; }
+</style>
+<script>
+  (function () {
+    var stored = null;
+    try { stored = localStorage.getItem('theme'); } catch (e) {}
+    var preferLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    var theme = stored === 'light' || stored === 'dark' ? stored : (preferLight ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  // Shows/hides a .loading-badge element by id — pair with a try/finally
+  // around a fetch() so it clears even if the request errors.
+  function setLoading(id, isLoading) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLoading ? "" : "none";
+  }
+  // Monthly points (a real crawl snapshot) render as solid filled circles;
+  // daily-only points (Isilon SmartQuotas, no crawl that day) render as
+  // smaller hollow circles in the same color — one visual language reused on
+  // every trend/evolution chart, driven by the `monthly` flag
+  // buildTrendSeries() already tags each point with.
+  function pointStyleFor(series, color) {
+    return {
+      pointRadius: series.map(d => d.monthly ? 4 : 2.5),
+      pointBackgroundColor: series.map(d => d.monthly ? color : cssVar('--surface')),
+      pointBorderColor: color,
+      pointBorderWidth: series.map(d => d.monthly ? 0 : 1.5),
+    };
+  }
+
+  // Fixed hues per tier, deliberately distinct from the green/amber/red used
+  // elsewhere for staleness severity — these charts' colors mean "which
+  // tier", not "how stale", so reusing that palette here would be confusing.
+  // Keyed by base tier name ("Legacy", "Archive", ...) — a bucket name like
+  // "Legacy - Groups" (Group Leader Evolution) resolves to the same color as
+  // the bare "Legacy" (Institute Trends) via the " - " split below.
+  const TIER_BASE_COLORS = {
+    "Legacy": "#4f8ef7",
+    "Archive": "#a78bfa",
+    "Scratch": "#2dd4bf",
+    "Deep Archive": "#f472b6",
+    "Other": "#8892a4",
+  };
+  const DEFAULT_TIER_COLOR = "#8892a4";
+  function tierColor(tier) {
+    const base = tier.includes(" - ") ? tier.split(" - ")[0] : tier;
+    return TIER_BASE_COLORS[base] || DEFAULT_TIER_COLOR;
+  }
+
+  // JS equivalent of app.py's human_bytes() — same thresholds/precision, so a
+  // client-recomputed value (e.g. Institute Trends' Total tile after a
+  // legend toggle) matches the style of the server-rendered initial value.
+  function humanBytesJs(n) {
+    if (n === null || n === undefined) return "—";
+    const sign = n < 0 ? "-" : "";
+    n = Math.abs(n);
+    if (n >= 1e12) return `${sign}${(n / 1e12).toFixed(2)} TB`;
+    if (n >= 1e9) return `${sign}${(n / 1e9).toFixed(1)} GB`;
+    if (n >= 1e6) return `${sign}${(n / 1e6).toFixed(0)} MB`;
+    if (n >= 1e3) return `${sign}${(n / 1e3).toFixed(0)} KB`;
+    return `${sign}${n.toFixed(0)} B`;
+  }
+
+  // Shared renderer for every stacked-by-tier chart (Group Leader Evolution's
+  // per-leader and all-groups-combined charts, Institute Trends) — same
+  // shape, just a different data source per caller.
+  function renderTierChart(canvasId, tiers, series, year, opts) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return; // admin-only canvases don't exist for other users
+
+    // Same "one point per prior month, full daily detail for the current
+    // month" collapsing every other trend chart in the app uses (buildTrend
+    // Series/formatTrendLabel, both in this file) — otherwise a metric with
+    // daily resolution (Total size) would grow one label per day forever.
+    // Pass { collapseCurrentMonth: false } to always collapse to one point
+    // per month instead, including the current one (Institute Trends —
+    // daily detail would clutter a big-picture view rather than help it).
+    const collapseFn = (opts && opts.collapseCurrentMonth === false) ? collapseAllToMonthly : buildTrendSeries;
+    const collapsed = collapseFn(filterByYear(series, year));
+    const labels = collapsed.map(d => formatTrendLabel(d, !year));
+
+    // tierDisplayNames (opt-in per caller) only ever renames what's shown in
+    // the legend/tooltip label — data lookups (p[tier]) and tierColor(tier)
+    // still use the real tier string, so this is purely cosmetic and never
+    // needs the color map or any other caller to know about the renaming.
+    const displayNames = (opts && opts.tierDisplayNames) || {};
+
+    // asPercentage (opt-in): stacks each tier's SHARE of that point's total
+    // (always summing to exactly 100%) instead of its absolute size. This is
+    // the honest way to make a shrinking tier visually obvious even while
+    // the overall total keeps growing — unlike a non-zero y-axis minimum
+    // (see the reverted yBeginAtZero experiment above), a 0-100% stack can't
+    // misrepresent anything: every point is bounded and sums correctly by
+    // construction, for any tier, regardless of which is largest.
+    const asPercentage = !!(opts && opts.asPercentage);
+    const pointTotals = collapsed.map(p => tiers.reduce((sum, t) => sum + (p[t] || 0), 0));
+
+    const datasets = tiers.map(tier => ({
+      label: displayNames[tier] || tier,
+      data: collapsed.map((p, i) => {
+        const raw = p[tier] || 0;
+        if (!asPercentage) return raw / 1e12;
+        return pointTotals[i] > 0 ? (raw / pointTotals[i]) * 100 : 0;
+      }),
+      backgroundColor: tierColor(tier) + "55",
+      borderColor: tierColor(tier),
+      fill: true,
+      stack: "tiers",
+      tension: 0.2,
+      ...pointStyleFor(collapsed, tierColor(tier)),
+    }));
+
+    const stale = Chart.getChart(canvas);
+    if (stale) stale.destroy();
+    const chart = new Chart(canvas, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        // Omitted (Chart.js's own default) unless a caller passes
+        // opts.aspectRatio — Institute Trends uses a smaller ratio (taller
+        // chart for the same width) so the same honest, zero-based data
+        // spans more vertical pixels and month-to-month movement reads more
+        // clearly, without touching the axis scale itself the way the
+        // reverted yBeginAtZero experiment did. Group Leader Evolution's
+        // charts don't pass this, so they're unaffected.
+        ...(opts && opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: cssVar('--text') },
+            // Replicates Chart.js's own default legend click (toggle that
+            // dataset's visibility) and then calls opts.onLegendToggle, if
+            // the caller supplied one, so a page can react to which tiers
+            // are currently shown — e.g. Institute Trends recomputes its
+            // Total tile from only the still-visible tiers. A no-op for
+            // every caller that doesn't pass this (Group Leader Evolution).
+            onClick: (e, legendItem, legend) => {
+              const ci = legend.chart;
+              const index = legendItem.datasetIndex;
+              if (ci.isDatasetVisible(index)) ci.hide(index); else ci.show(index);
+              if (opts && opts.onLegendToggle) opts.onLegendToggle(ci);
+            },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}${asPercentage ? "%" : " TB"}`,
+              footer: (items) => {
+                const total = items.reduce((sum, item) => sum + item.parsed.y, 0);
+                const d = collapsed[items[0]?.dataIndex];
+                const sourceNote = d ? (d.monthly ? "Monthly crawl snapshot" : "Daily reading (Isilon)") : "";
+                const totalLabel = asPercentage ? `Total: ${total.toFixed(1)}%` : `Total: ${total.toFixed(1)} TB`;
+                return [totalLabel, sourceNote].filter(Boolean);
+              },
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+          y: {
+            // Always zero-based — reverted a yBeginAtZero:false experiment
+            // after confirming (direct Chart.js render test) that a stacked
+            // area chart derives its axis min from the BOTTOM-most dataset's
+            // own range, not the full stack's range, so a non-zero minimum
+            // visually crushes whichever tier is stacked first (here, the
+            // single largest one) into a sliver — actively misleading, not
+            // just "more dramatic". Don't reintroduce this for stacked
+            // charts; a non-zero axis is only safe for a single-line chart.
+            // asPercentage mode is the honest alternative — see above.
+            stacked: true, beginAtZero: true,
+            ...(asPercentage ? { max: 100 } : {}),
+            ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') },
+            title: { display: true, text: asPercentage ? "% of total" : "TB", color: cssVar('--muted') },
+          },
+        },
+      },
+    });
+
+    // Sync any caller-side state (e.g. Institute Trends' Total tile) to this
+    // fresh chart's initial all-visible state — every render creates a brand
+    // new Chart.js instance, which resets any previous legend toggling, so
+    // without this the tile could keep reflecting a now-stale hidden tier
+    // after switching year/metric.
+    if (opts && opts.onLegendToggle) opts.onLegendToggle(chart);
+    return chart;
+  }
+
+  // Collapsed/expanded state per section — saved to this browser's
+  // localStorage only, so condensing (or expanding) a section sticks across
+  // reloads without affecting other users or being visible to them. A
+  // collapse-toggle button declares its own default via
+  // data-default-collapsed="true" (used only until the user has explicitly
+  // toggled that section at least once — after that, their own choice always
+  // wins over the markup's default). Each page calls applyCollapsedState()
+  // itself, at the end of its own script block, once its collapsible markup
+  // actually exists in the DOM — this file's <script> runs in <head>, before
+  // <body> is parsed, so it can't apply anything itself.
+  const COLLAPSE_STORAGE_KEY = "dashboardCollapsedSections";
+
+  function loadCollapsedSections() {
+    try {
+      return JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function setSectionCollapsed(bodyId, collapsed) {
+    const state = loadCollapsedSections();
+    state[bodyId] = collapsed;
+    try { localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function toggleCollapse(bodyId, btn) {
+    const body = document.getElementById(bodyId);
+    const collapsing = body.style.display !== "none";
+    body.style.display = collapsing ? "none" : "";
+    btn.textContent = collapsing ? "▸" : "▾";
+    btn.setAttribute("aria-expanded", collapsing ? "false" : "true");
+    setSectionCollapsed(bodyId, collapsing);
+    if (!collapsing) {
+      // Just expanded — a Chart.js canvas built (or last drawn) while this
+      // section was display:none measured its container as 0x0, so it needs
+      // an explicit resize now that it has real dimensions again.
+      body.querySelectorAll("canvas").forEach(canvas => {
+        const chart = Chart.getChart(canvas);
+        if (chart) chart.resize();
+      });
+    }
+  }
+
+  function applyCollapsedState() {
+    const state = loadCollapsedSections();
+    document.querySelectorAll("[data-collapse-target]").forEach(btn => {
+      const bodyId = btn.dataset.collapseTarget;
+      const body = document.getElementById(bodyId);
+      if (!body) return;
+      const explicit = state[bodyId];
+      const collapsed = explicit !== undefined ? explicit : btn.dataset.defaultCollapsed === "true";
+      if (!collapsed) return;
+      body.style.display = "none";
+      btn.textContent = "▸";
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+</script>
+</head>
+<body>
+<div class="app-switcher">
+  <a href="https://informatics.jic.ac.uk/">Informatics HUB</a>
+  <a href="https://job-stats.informatics.jic.ac.uk/">HPC Job Stats</a>
+  <span class="current">Great Data Management</span>
+  <a href="https://cross-charging.informatics.jic.ac.uk/">Cross Charging</a>
+  <a href="https://repo.informatics.jic.ac.uk/">Training Repo</a>
+  <a href="https://informatics.jic.ac.uk/training-pills/">Training Pills</a>
+  <a href="https://drone-data.informatics.jic.ac.uk/">Drone Imagery Data</a>
+</div>
+<header>
+  <div class="brand">
+    <h1>
+      <a href="https://informatics.jic.ac.uk/" title="Informatics HUB">
+        <img id="logo" src="{{ url_for('static', filename='JIC_Informatics.png') }}" alt="JIC Informatics">
+      </a>
+      <a href="{{ url_for('index') }}" title="Data Management home">
+        <img class="gta-toggle" src="{{ url_for('static', filename='great_data_management.png') }}"
+             alt="Data Management"
+             onclick="event.preventDefault(); event.stopPropagation(); toggleGtaSound();">
+      </a>
+    </h1>
+  </div>
+  <nav>
+    <a href="{{ url_for('data_management') }}">Data Management Guide</a>
+    {% if session.get('authenticated') %}
+      <a href="{{ url_for('index') }}">Overview</a>
+      <a href="{{ url_for('evolution') }}">Area Evolution</a>
+      <a href="{{ url_for('big_files') }}">Big Files</a>
+      <a href="{{ url_for('group_leader_evolution') }}">Group Leader Evolution</a>
+      {% if is_admin %}
+      <a href="{{ url_for('institute_trends') }}">Institute Trends</a>
+      <a href="{{ url_for('growth_alerts') }}">Storage Alerts &amp; Insights</a>
+      <a href="{{ url_for('access_admin') }}">Admin</a>
+      {% endif %}
+      <a href="{{ url_for('help_page') }}">Help</a>
+      {% if can_view_all_user %}
+      <form method="post" action="{{ url_for('set_acting_as') }}" style="display:inline-flex;" title="Preview the dashboard as a real member of a research group would see it">
+        <select name="group_cn" onchange="this.form.submit()"
+                style="max-width:170px;{% if acting_as_group %} background:var(--amber); color:#1a1a1a;{% endif %}">
+          <option value="" {% if not acting_as_group %}selected{% endif %}>Acting as: (full access)</option>
+          {% for g in act_as_group_options %}
+          <option value="{{ g }}" {% if g == acting_as_group %}selected{% endif %}>Acting as: {{ g }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+      <span class="nav-username" style="color:var(--muted); padding: 4px 8px;"
+            title="{{ session.get('full_name') or session.get('username') }}">
+        {{ session.get('full_name') or session.get('username') }}
+      </span>
+      <a href="{{ url_for('logout') }}">Log out</a>
+    {% endif %}
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">🌙</button>
+  </nav>
+</header>
+{% if acting_as_group %}
+<div style="background:var(--amber); color:#1a1a1a; padding:8px 20px; display:flex; align-items:center; gap:12px; font-size:13px;">
+  <span>⚠ Viewing as a member of <strong>{{ acting_as_group }}</strong> — not your real access level.</span>
+  <form method="post" action="{{ url_for('set_acting_as') }}" style="display:inline;">
+    <input type="hidden" name="group_cn" value="">
+    <button type="submit" class="btn-sm" style="background:#1a1a1a; color:var(--amber);">Stop acting as</button>
+  </form>
+</div>
+{% endif %}
+<main>
+{% block flashes %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {# Global so a flash() from ANY route is shown exactly once on whatever
+       page the user lands on next — previously only access_admin.html/
+       extension_actions.html/settings.html/login.html rendered flashes at
+       all, so a flash() reached from any other page (e.g. /act-as, or the
+       various "no directory specified" errors) just sat queued in the
+       session, undisplayed, until the user happened to visit one of those
+       four pages — where it could show up stacked alongside a newer,
+       unrelated message. Overridable per page (see login.html, which wants
+       its flashes positioned inside its own centered card instead) via this
+       block. #}
+    <div class="card flash-wrapper" style="max-width: 1100px; margin: 20px auto 0 auto;">
+      {% for category, message in messages %}
+        <div class="flash-messages {{ 'error' if category == 'error' else 'success' }}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+{% endblock %}
+{% block content %}{% endblock %}
+</main>
+<footer>{% block footer %}Diskover storage monitor — John Innes Centre · Developed by Miguel Gonzalez-Sanchez{% endblock %}</footer>
+
+<audio id="gta-audio" src="{{ url_for('static', filename='GTA.mp3') }}" loop></audio>
+
+<!-- Trend modal -->
+<div id="trend-panel">
+  <div id="trend-box">
+    <span id="trend-close" onclick="closeTrend()">✕</span>
+    <h3 id="trend-title">Trend</h3>
+    <p style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+      Older months are shown as a single point (their last value); the current month shows every day.
+      ● = monthly crawl snapshot, ○ = daily reading (Isilon SmartQuotas).
+    </p>
+    <span id="trend-loading" class="loading-badge" style="display:none; margin-bottom:10px;">Loading…</span>
+    <canvas id="trend-chart" height="200"></canvas>
+  </div>
+</div>
+
+<script>
+(function () {
+    var root = document.documentElement;
+    var toggle = document.getElementById('theme-toggle');
+    var logo = document.getElementById('logo');
+    var LOGOS = {
+        dark: "{{ url_for('static', filename='JIC_Informatics.png') }}",
+        light: "{{ url_for('static', filename='jic_logo.png') }}"
+    };
+    var ICONS = { dark: '🌙', light: '☀️' };
+    var theme = root.getAttribute('data-theme') || 'dark';
+    if (logo) logo.src = LOGOS[theme];
+    if (toggle) {
+        toggle.textContent = ICONS[theme];
+        toggle.addEventListener('click', function () {
+            var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            try { localStorage.setItem('theme', next); } catch (e) {}
+            location.reload();
+        });
+    }
+})();
+
+(function () {
+    document.querySelectorAll('.flash-messages').forEach(function (el) {
+        setTimeout(function () {
+            var wrapper = el.closest('.flash-wrapper');
+            el.style.transition = 'opacity .4s ease';
+            el.style.opacity = '0';
+            setTimeout(function () {
+                el.remove();
+                if (wrapper && !wrapper.querySelector('.flash-messages')) wrapper.remove();
+            }, 400);
+        }, 4000);
+    });
+})();
+
+const GTA_STATE_KEY = "gtaAudioState";
+
+function saveGtaState(audio) {
+  try {
+    localStorage.setItem(GTA_STATE_KEY, JSON.stringify({ playing: !audio.paused, time: audio.currentTime }));
+  } catch (e) {}
+}
+
+function toggleGtaSound() {
+  const audio = document.getElementById("gta-audio");
+  if (!audio) return;
+  if (audio.paused) {
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
+  saveGtaState(audio);
+}
+
+// Carries GTA sound playback across page navigations (this app is
+// server-rendered, so every nav link is a full page load and would
+// otherwise stop the audio). Position/playing state is stashed in
+// localStorage just before navigating away and picked back up here.
+(function restoreGtaSound() {
+  const audio = document.getElementById("gta-audio");
+  if (!audio) return;
+  let state = null;
+  try { state = JSON.parse(localStorage.getItem(GTA_STATE_KEY)); } catch (e) {}
+  if (state && state.playing) {
+    audio.currentTime = state.time || 0;
+    audio.play().catch(() => {});
+  }
+  window.addEventListener("pagehide", () => saveGtaState(audio));
+})();
+
+function monthKeyOf(dateStr) {
+  return (dateStr || "").slice(0, 7);
+}
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function filterByYear(data, year) {
+  if (!year) return data;
+  const y = String(year);
+  return (data || []).filter(d => (d.run_date || "").slice(0, 4) === y);
+}
+
+// One point per prior month, plus every day of the current month. `data`
+// must already be sorted ascending by date (every API endpoint here already
+// does `ORDER BY ... run_date`/`stat_date`). Each point is tagged `monthly`
+// so formatTrendLabel knows whether it represents a whole month or one day.
+//
+// A prior month's point is built by merging every entry seen that month
+// field-by-field (each field keeps the latest non-null reading of itself),
+// not by picking whichever single row is chronologically last. That
+// distinction matters for a directory Isilon tracks daily but Diskover only
+// recently started crawling: a month can have one real Diskover snapshot
+// (with staleness) followed by several Isilon-only daily readings (size
+// only, staleness null) — picking "the last row" outright would silently
+// throw away that month's only real staleness reading in favor of a later,
+// data-poorer day, even though it genuinely exists.
+function buildTrendSeries(data) {
+  if (!Array.isArray(data) || data.length === 0) return [];
+  const curMonth = currentMonthKey();
+  const lastByMonth = new Map();
+  const out = [];
+
+  for (const d of data) {
+    const mKey = monthKeyOf(d.run_date);
+    if (mKey === curMonth) {
+      out.push({ ...d, monthly: false });
+      continue;
+    }
+    const existing = lastByMonth.get(mKey);
+    if (!existing) {
+      lastByMonth.set(mKey, { ...d });
+      continue;
+    }
+    const merged = { ...existing, run_date: d.run_date };
+    for (const key of Object.keys(d)) {
+      if (d[key] !== null && d[key] !== undefined) merged[key] = d[key];
+    }
+    lastByMonth.set(mKey, merged);
+  }
+  for (const d of lastByMonth.values()) out.push({ ...d, monthly: true });
+  out.sort((a, b) => (a.run_date < b.run_date ? -1 : a.run_date > b.run_date ? 1 : 0));
+  return out;
+}
+
+// Like buildTrendSeries(), but collapses EVERY month — including the
+// current one — to a single point (its last entry that month). Used where
+// daily resolution would clutter a big-picture view rather than help it
+// (Institute Trends), instead of always keeping the current month daily.
+function collapseAllToMonthly(data) {
+  if (!Array.isArray(data) || data.length === 0) return [];
+  const lastByMonth = new Map();
+  for (const d of data) {
+    lastByMonth.set(monthKeyOf(d.run_date), d); // later entries overwrite earlier ones
+  }
+  return Array.from(lastByMonth.values())
+    .map(d => ({ ...d, monthly: true }))
+    .sort((a, b) => (a.run_date < b.run_date ? -1 : a.run_date > b.run_date ? 1 : 0));
+}
+
+function formatTrendLabel(d, withYear) {
+  if (withYear) return d.run_date;
+  const [, month, day] = d.run_date.split("-");
+  const monthName = MONTH_NAMES[parseInt(month, 10) - 1];
+  return d.monthly ? monthName : `${monthName} ${parseInt(day, 10)}`;
+}
+
+// Builds (or rebuilds) the standard 4-line size/staleness trend chart on
+// `canvas` from a timeseries array shaped like {run_date, size_tb,
+// stale_1yr_tb, stale_2yr_tb, stale_4yr_tb}. Pass `year` to scope the chart
+// to a single year — axis labels drop the year (it's implied by the
+// selection) and just show the month, or "Mon D" for the current month's
+// daily points. Omit `year` to show all available history with full dates
+// (used by the trend modal, which has no year selector). Returns a
+// controller with setYear(year) to re-render without re-fetching.
+function createTrendChart(canvas, rawData, year) {
+  const stale = Chart.getChart(canvas);
+  if (stale) stale.destroy();
+
+  let chart = null;
+
+  function render(selectedYear) {
+    const series = buildTrendSeries(filterByYear(rawData, selectedYear));
+    const labels = series.map(d => formatTrendLabel(d, !selectedYear));
+    const datasets = [
+      { label: "Total size (TB)", data: series.map(d => d.size_tb),      borderColor: cssVar('--accent'), tension:.3, fill:false, ...pointStyleFor(series, cssVar('--accent')) },
+      { label: "Stale >1yr (TB)", data: series.map(d => d.stale_1yr_tb), borderColor: cssVar('--green'), tension:.3, fill:false, ...pointStyleFor(series, cssVar('--green')) },
+      { label: "Stale >2yr (TB)", data: series.map(d => d.stale_2yr_tb), borderColor: cssVar('--amber'), tension:.3, fill:false, ...pointStyleFor(series, cssVar('--amber')) },
+      { label: "Stale >4yr (TB)", data: series.map(d => d.stale_4yr_tb), borderColor: cssVar('--red'), tension:.3, fill:false, ...pointStyleFor(series, cssVar('--red')) },
+    ];
+    if (chart) chart.destroy();
+    chart = new Chart(canvas, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: cssVar('--text') } },
+          tooltip: {
+            callbacks: {
+              footer: (items) => {
+                const d = series[items[0]?.dataIndex];
+                return d ? (d.monthly ? "Monthly crawl snapshot" : "Daily reading (Isilon)") : "";
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+          y: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') }, beginAtZero: true },
+        }
+      }
+    });
+  }
+
+  render(year);
+  return { setYear(newYear) { render(newYear); } };
+}
+
+// Fills a <select id="yearSelect">-style element with only the years that
+// actually appear in `data` (plus the current year, always offered even if
+// nothing's been recorded for it yet) — so there's no way to pick a year
+// that's guaranteed to show a blank chart. Current year selected by default.
+function populateYearSelectFromData(selectId, data) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const curYear = String(new Date().getFullYear());
+  const years = new Set((data || []).map(d => (d.run_date || "").slice(0, 4)).filter(Boolean));
+  years.add(curYear);
+  const sorted = Array.from(years).sort().reverse();
+
+  sel.innerHTML = "";
+  sorted.forEach(y => {
+    const opt = document.createElement("option");
+    opt.value = y;
+    opt.textContent = y;
+    if (y === curYear) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function getSelectedYear(selectId) {
+  const sel = document.getElementById(selectId);
+  return sel ? Number(sel.value) : new Date().getFullYear();
+}
+
+// Shared by destructive admin forms (Full Access Users / Directory Group
+// Rules "Remove") — reads the confirmation text from data-confirm (a plain
+// HTML attribute, safely escaped by Jinja) rather than building an inline
+// onsubmit="confirm('...')" string with interpolated values, which would
+// reopen the same JS-string-breakout issue handleTrendClick() below fixes.
+function confirmFormSubmit(form) {
+  return confirm(form.dataset.confirm);
+}
+
+// Reads path/name from data-* attributes instead of having the caller build
+// an inline onclick="showTrend(path, name)" string with directly-interpolated
+// template values — a directory name containing a single quote would otherwise break out of that JS
+// string literal (Jinja's autoescaping encodes it as an HTML entity, but the
+// browser HTML-decodes attribute values before parsing them as JS, so the
+// encoding doesn't actually protect an inline event-handler attribute).
+// group_leader_evolution.html's handleNamedTrendClick() already used this
+// same data-attribute pattern; this is the equivalent for showTrend's
+// plain path+name callers (index/evolution/directory_explorer/growth_alerts).
+function handleTrendClick(link) {
+  showTrend(link.dataset.path, link.dataset.name);
+  return false;
+}
+
+async function showTrend(path, name) {
+  document.getElementById("trend-title").textContent = name;
+  document.getElementById("trend-panel").classList.add("open");
+  const loading = document.getElementById("trend-loading");
+  const canvas = document.getElementById("trend-chart");
+  loading.style.display = "inline-flex";
+  canvas.style.display = "none";
+  try {
+    const resp = await fetch("/api/trend?path=" + encodeURIComponent(path));
+    const data = await resp.json();
+    createTrendChart(canvas, data);
+  } finally {
+    loading.style.display = "none";
+    canvas.style.display = "";
+  }
+}
+
+function closeTrend() {
+  document.getElementById("trend-panel").classList.remove("open");
+}
+document.getElementById("trend-panel").addEventListener("click", e => {
+  if (e.target === document.getElementById("trend-panel")) closeTrend();
+});
+
+// ── Report export (CSV / PDF) ─────────────────────────────────────────────────
+function csvEscape(val) {
+  const s = String(val ?? "");
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadTableCSV(tableId, filename) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+
+  const headerCells = Array.from(table.querySelectorAll("thead th"));
+  const skipCols = new Set();
+  headerCells.forEach((th, i) => { if (th.dataset.csv === "skip") skipCols.add(i); });
+
+  const rows = [headerCells
+    .filter((_, i) => !skipCols.has(i))
+    .map(th => th.innerText.replace(/[↕\s]+$/, "").trim())];
+
+  table.querySelectorAll("tbody tr").forEach(tr => {
+    if (tr.style.display === "none") return;
+    rows.push(Array.from(tr.children)
+      .filter((_, i) => !skipCols.has(i))
+      .map(td => td.innerText.trim()));
+  });
+
+  const csv = rows.map(row => row.map(csvEscape).join(",")).join("\r\n");
+  triggerDownload(new Blob([csv], { type: "text/csv;charset=utf-8;" }), filename);
+}
+
+function flattenCanvas(canvas, bg) {
+  // Chart.js canvases are transparent — flatten onto the app's dark surface
+  // color so labels/text (styled for a dark background) stay legible.
+  const flat = document.createElement("canvas");
+  flat.width = canvas.width;
+  flat.height = canvas.height;
+  const ctx = flat.getContext("2d");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, flat.width, flat.height);
+  ctx.drawImage(canvas, 0, 0);
+  return flat;
+}
+
+// Reads whatever's already rendered on the page rather than duplicating
+// values/labels in JS, so the report always matches what's on screen.
+function collectPageTiles(selector = ".tiles .tile") {
+  return Array.from(document.querySelectorAll(selector)).map(t => ({
+    label: t.querySelector(".label")?.innerText.trim() || "",
+    value: t.querySelector(".value")?.innerText.trim() || "",
+    sub: t.querySelector(".sub")?.innerText.trim() || "",
+  }));
+}
+
+function collectPageCharts(selector = ".chart-box") {
+  return Array.from(document.querySelectorAll(selector))
+    .map(box => {
+      const canvas = box.querySelector("canvas");
+      if (!canvas) return null;
+      const h3 = box.querySelector("h3");
+      return { id: canvas.id, title: h3 ? h3.innerText.trim() : "" };
+    })
+    .filter(Boolean);
+}
+
+function downloadReportPDF({ filename, title, subtitle, tiles = [], charts = [] }) {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: "landscape", unit: "pt" });
+  const margin = 40;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  function drawHeader() {
+    let y = margin;
+    pdf.setFontSize(16);
+    pdf.setTextColor(20, 20, 20);
+    pdf.text(title, margin, y);
+    y += 18;
+    if (subtitle) {
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(subtitle, margin, y);
+      y += 14;
+    }
+    pdf.setDrawColor(220, 220, 220);
+    pdf.line(margin, y, pageWidth - margin, y);
+    return y + 20;
+  }
+
+  function drawTiles(y) {
+    if (!tiles.length) return y;
+    const colWidth = (pageWidth - margin * 2) / tiles.length;
+    tiles.forEach((t, i) => {
+      const x = margin + i * colWidth;
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text(t.label, x, y);
+      pdf.setFontSize(15);
+      pdf.setTextColor(20, 20, 20);
+      pdf.text(t.value, x, y + 18);
+      if (t.sub) {
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(t.sub, x, y + 32);
+      }
+    });
+    return y + 55;
+  }
+
+  function drawChart(canvasId, chartTitle, y) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !canvas.width || !canvas.height) return;
+    const flat = flattenCanvas(canvas, cssVar('--surface'));
+    const imgData = flat.toDataURL("image/png", 1.0);
+
+    if (chartTitle) {
+      pdf.setFontSize(12);
+      pdf.setTextColor(20, 20, 20);
+      pdf.text(chartTitle, margin, y);
+      y += 16;
+    }
+    const maxW = pageWidth - margin * 2;
+    const maxH = pageHeight - y - margin;
+    const ratio = Math.min(maxW / flat.width, maxH / flat.height);
+    pdf.addImage(imgData, "PNG", margin, y, flat.width * ratio, flat.height * ratio);
+  }
+
+  let y = drawHeader();
+  y = drawTiles(y);
+
+  const validCharts = charts.filter(c => {
+    const el = document.getElementById(c.id);
+    return el && el.width && el.height;
+  });
+
+  if (!validCharts.length && !tiles.length) {
+    alert("Nothing to export yet — please wait for the charts to finish loading and try again.");
+    return;
+  }
+
+  validCharts.forEach((chart, i) => {
+    if (i > 0 || tiles.length) {
+      pdf.addPage();
+      y = drawHeader();
+    }
+    drawChart(chart.id, chart.title, y);
+  });
+
+  pdf.save(filename);
+}
+</script>
+</body>
+</html>

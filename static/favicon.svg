@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- JIC Informatics stripes: three equal bands on a 2:3 card, centred -->
+  <defs><clipPath id="card"><rect x="5.95" y="1" width="20.1" height="30" rx="0.8"/></clipPath></defs>
+  <g clip-path="url(#card)">
+    <rect x="5.95" y="1" width="20.1" height="10" fill="#01356e"/>
+    <rect x="5.95" y="11" width="20.1" height="10" fill="#9aa9cd"/>
+    <rect x="5.95" y="21" width="20.1" height="10" fill="#cbcfe6"/>
+  </g>
+</svg>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto 20px auto; display:flex; gap:8px;">
+  <a href="{{ url_for('settings') }}" class="btn-sm"
+     style="{% if active_tab == 'settings' %}background:var(--accent); color:#fff;{% endif %}">Settings</a>
+  <a href="{{ url_for('access_admin') }}" class="btn-sm"
+     style="{% if active_tab == 'access' %}background:var(--accent); color:#fff;{% endif %}">Access Control</a>
+  <a href="{{ url_for('extension_actions') }}" class="btn-sm"
+     style="{% if active_tab == 'extensions' %}background:var(--accent); color:#fff;{% endif %}">Extension Actions</a>
+</div>
+
+<div class="card" style="max-width: 920px; margin: 0 auto;">
+  <h2>Area Visibility</h2>
+  <p style="color:var(--muted); margin-bottom:8px;">
+    Uncheck areas you do not want to appear in the overview and evolution views.
+  </p>
+  <p style="color:var(--amber); margin-bottom:16px;">
+    ⚠ This is a global setting — changes here affect what <strong>every</strong> user sees,
+    not just you.
+  </p>
+
+  <form method="post">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px 18px; margin-bottom: 18px;">
+      {% for area in areas %}
+      <label style="display:flex; align-items:center; gap:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px 14px;">
+        <input type="checkbox" name="enabled_areas" value="{{ area.value }}" {% if area.enabled %}checked{% endif %}>
+        <span>{{ area.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit">Save Settings</button>
+  </form>
+</div>
+
+{% endblock %}

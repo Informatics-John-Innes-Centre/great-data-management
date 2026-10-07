@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <form method="get" style="display:contents;">
+    <select name="leader" onchange="this.form.submit()" title="Group leader">
+      {% for l in leaders %}
+      <option value="{{ l }}" {% if l == selected_leader %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <select id="yearSelect" title="Year" onchange="onYearChange()"></select>
+  <button class="btn-sm" style="margin-left:auto"
+          data-subtitle="Group leader: {{ selected_leader }}{% if latest_snapshot %} · Snapshot: {{ latest_snapshot.run_date }}{% endif %}"
+          onclick="downloadLeaderReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+{% set ns = namespace(size_b=0, stale1_b=0, stale2_b=0, stale4_b=0) %}
+{% for r in breakdown %}
+  {% if r.dir_size_bytes is not none %}{% set ns.size_b = ns.size_b + r.dir_size_bytes %}{% endif %}
+  {% if r.stale_1yr_bytes_eff is not none %}{% set ns.stale1_b = ns.stale1_b + r.stale_1yr_bytes_eff %}{% endif %}
+  {% if r.stale_2yr_bytes_eff is not none %}{% set ns.stale2_b = ns.stale2_b + r.stale_2yr_bytes_eff %}{% endif %}
+  {% if r.stale_4yr_bytes_eff is not none %}{% set ns.stale4_b = ns.stale4_b + r.stale_4yr_bytes_eff %}{% endif %}
+{% endfor %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Directories</div>
+    <div class="value">{{ breakdown | length }}</div>
+    <div class="sub">for {{ selected_leader }}{% if latest_snapshot %} — {{ latest_snapshot.run_date }}{% endif %}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Total size</div>
+    <div class="value">{{ "%.1f" | format(ns.size_b / 1e12) }} TB</div>
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;1yr size</div>
+    <div class="value" style="color:var(--green)">{{ "%.1f" | format(ns.stale1_b / 1e12) }} TB</div>
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;2yr size</div>
+    <div class="value" style="color:var(--amber)">{{ "%.1f" | format(ns.stale2_b / 1e12) }} TB</div>
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;4yr size</div>
+    <div class="value" style="color:var(--red)">{{ "%.1f" | format(ns.stale4_b / 1e12) }} TB</div>
+  </div>
+</div>
+
+{% if is_admin %}
+<div class="chart-box" style="margin-bottom:20px;">
+  <div class="card-header" style="margin-bottom:14px;">
+    <h3 style="margin-bottom:0;">Evolution: all group leaders combined (by storage tier)</h3>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="allGroupsChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+      <select id="allGroupsMetricSelect" onchange="loadAllGroupsTierChart()">
+        <option value="size" selected>Total size</option>
+        <option value="stale1">Stale &gt;1yr</option>
+        <option value="stale2">Stale &gt;2yr</option>
+        <option value="stale4">Stale &gt;4yr</option>
+      </select>
+      <button class="collapse-toggle" data-collapse-target="allGroupsChartBody" data-default-collapsed="true"
+              onclick="toggleCollapse('allGroupsChartBody', this)" title="Collapse/expand" aria-expanded="false">▸</button>
+    </div>
+  </div>
+  <div id="allGroupsChartBody">
+    <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+      Every group leader you can see, combined — same tier breakdown as below, but institute-wide
+      rather than for just {{ selected_leader }}. Admin-only.
+    </p>
+    <canvas id="allGroupsEvolutionChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<div class="chart-box" style="margin-bottom:20px;">
+  <div class="card-header" style="margin-bottom:14px;">
+    <h3 style="margin-bottom:0;">Evolution: {{ selected_leader }} (by storage tier)</h3>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <span id="tierChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+      <select id="tierMetricSelect" onchange="loadLeaderTierChart()">
+        <option value="size" selected>Total size</option>
+        <option value="stale1">Stale &gt;1yr</option>
+        <option value="stale2">Stale &gt;2yr</option>
+        <option value="stale4">Stale &gt;4yr</option>
+      </select>
+    </div>
+  </div>
+  <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+    Stacked by storage tier (Archive / Legacy / Scratch) rather than by staleness threshold — pick
+    one metric above to see how that tier breakdown has changed over time. "Total size" includes
+    daily resolution (merged from Isilon SmartQuotas) for the current month; the staleness metrics
+    only update once a month, from the Diskover crawl.
+  </p>
+  <canvas id="leaderEvolutionChart" data-leader="{{ selected_leader }}"></canvas>
+</div>
+
+<div class="card">
+  <h2>Directories — latest snapshot{% if latest_snapshot %} ({{ latest_snapshot.run_date }}){% endif %}</h2>
+  <div class="table-wrap">
+    <table id="dirTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Directory ↕</th>
+          <th onclick="sortTable(1)">Area</th>
+          <th onclick="sortTable(2)">Size ↕</th>
+          <th onclick="sortTable(3)">Stale &gt;1yr size ↕</th>
+          <th onclick="sortTable(4)">Stale &gt;2yr size ↕</th>
+          <th onclick="sortTable(5)">Stale &gt;4yr size ↕</th>
+          <th>Trend</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in breakdown %}
+        <tr data-name="{{ r.directory | lower }}">
+          <td class="mono">{{ r.directory }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ r.index_label_short }}</td>
+          <td data-value="{{ r.dir_size_bytes or 0 }}">{{ r.dir_size_raw or "—" }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_1yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_2yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_4yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>
+            <a href="#"
+               data-directory="{{ r.directory }}"
+               data-area-short="{{ r.index_label_short }}"
+               data-title="{{ r.directory }} - {{ r.index_label_short }}"
+               onclick="return handleNamedTrendClick(this);"
+               title="Show trend for {{ r.directory }}">📈</a>
+            <a href="{{ url_for('directory_explorer', path=r.path) }}"
+               title="Explore subdirectories of {{ r.directory }}">📂</a>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not breakdown %}
+        <tr><td colspan="7" style="color:var(--muted)">No directories found for this group leader.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Per-directory evolution</h2>
+  {% for r in breakdown %}
+  <div class="chart-box" style="margin-bottom:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <h3 style="margin-bottom:0;">{{ r.directory }} — {{ r.index_label_short }}</h3>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <span id="dirChartLoading{{ loop.index0 }}" class="loading-badge" style="display:none;">Loading…</span>
+        <button type="button" class="btn" id="dirToggleBtn{{ loop.index0 }}" data-chart-index="{{ loop.index0 }}" onclick="return handleToggleDirChartClick(this)">Show chart</button>
+      </div>
+    </div>
+    <canvas id="dirChart{{ loop.index0 }}" data-directory="{{ r.directory }}" data-area-short="{{ r.index_label_short }}" style="display:none; margin-top:14px;"></canvas>
+  </div>
+  {% endfor %}
+  {% if not breakdown %}
+  <p style="color:var(--muted)">No directories found for this group leader.</p>
+  {% endif %}
+</div>
+
+<script>
+const dirCharts = {};
+
+function handleToggleDirChartClick(button) {
+  toggleDirChart(Number(button.dataset.chartIndex));
+  return false;
+}
+
+async function fetchNamedTrend(directory, areaShort) {
+  return fetch(`/api/trend?directory=${encodeURIComponent(directory)}&area_short=${encodeURIComponent(areaShort)}`).then(r => r.json());
+}
+
+function handleNamedTrendClick(link) {
+  showNamedTrend(link.dataset.directory, link.dataset.areaShort, link.dataset.title);
+  return false;
+}
+
+async function showNamedTrend(directory, areaShort, title) {
+  document.getElementById("trend-title").textContent = title;
+  document.getElementById("trend-panel").classList.add("open");
+  const loading = document.getElementById("trend-loading");
+  const canvas = document.getElementById("trend-chart");
+  loading.style.display = "inline-flex";
+  canvas.style.display = "none";
+  try {
+    const data = await fetchNamedTrend(directory, areaShort);
+    createTrendChart(canvas, data);
+  } finally {
+    loading.style.display = "none";
+    canvas.style.display = "";
+  }
+}
+
+async function toggleDirChart(idx) {
+  const canvas = document.getElementById(`dirChart${idx}`);
+  const btn = document.getElementById(`dirToggleBtn${idx}`);
+  const isHidden = canvas.style.display === "none";
+
+  if (!isHidden) {
+    canvas.style.display = "none";
+    btn.textContent = "Show chart";
+    return;
+  }
+
+  canvas.style.display = "";
+  btn.textContent = "Hide chart";
+  if (dirCharts[idx]) return;
+
+  setLoading(`dirChartLoading${idx}`, true);
+  try {
+    const directory = canvas.dataset.directory;
+    const areaShort = canvas.dataset.areaShort;
+    const data = await fetchNamedTrend(directory, areaShort);
+    dirCharts[idx] = createTrendChart(canvas, data, getSelectedYear("yearSelect"));
+  } finally {
+    setLoading(`dirChartLoading${idx}`, false);
+  }
+}
+
+// tierColor()/renderTierChart() are shared, defined in base.html (also used
+// by the admin-only Institute Trends page).
+
+let leaderTierTiers = [];
+let leaderTierSeries = [];
+
+async function loadLeaderTierChart() {
+  const name = document.getElementById("leaderEvolutionChart").dataset.leader;
+  const metric = document.getElementById("tierMetricSelect").value;
+  setLoading("tierChartLoading", true);
+  let payload;
+  try {
+    const resp = await fetch(`/api/leader_evolution_by_tier?name=${encodeURIComponent(name)}&metric=${encodeURIComponent(metric)}`);
+    payload = await resp.json();
+  } finally {
+    setLoading("tierChartLoading", false);
+  }
+  leaderTierTiers = payload.tiers || [];
+  leaderTierSeries = payload.series || [];
+  populateYearSelectFromData("yearSelect", leaderTierSeries);
+  renderTierChart("leaderEvolutionChart", leaderTierTiers, leaderTierSeries, getSelectedYear("yearSelect"));
+}
+
+let allGroupsTierTiers = [];
+let allGroupsTierSeries = [];
+
+async function loadAllGroupsTierChart() {
+  const canvas = document.getElementById("allGroupsEvolutionChart");
+  if (!canvas) return; // admin-only section, not in the DOM for other users
+  const metric = document.getElementById("allGroupsMetricSelect").value;
+  setLoading("allGroupsChartLoading", true);
+  let payload;
+  try {
+    const resp = await fetch(`/api/all_groups_evolution_by_tier?metric=${encodeURIComponent(metric)}`);
+    payload = await resp.json();
+  } finally {
+    setLoading("allGroupsChartLoading", false);
+  }
+  allGroupsTierTiers = payload.tiers || [];
+  allGroupsTierSeries = payload.series || [];
+  renderTierChart("allGroupsEvolutionChart", allGroupsTierTiers, allGroupsTierSeries, getSelectedYear("yearSelect"));
+}
+
+function onYearChange() {
+  const year = getSelectedYear("yearSelect");
+  renderTierChart("leaderEvolutionChart", leaderTierTiers, leaderTierSeries, year);
+  renderTierChart("allGroupsEvolutionChart", allGroupsTierTiers, allGroupsTierSeries, year);
+  Object.values(dirCharts).forEach(c => c.setYear(year));
+}
+
+loadLeaderTierChart();
+loadAllGroupsTierChart();
+applyCollapsedState();
+
+// ── PDF report ────────────────────────────────────────────────────────────────
+async function downloadLeaderReportPDF(btn) {
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Generating…";
+
+  try {
+    // A "full" report needs every per-directory chart rendered, not just the
+    // ones the user happened to expand — build any that haven't loaded yet.
+    const dirCanvases = document.querySelectorAll('canvas[id^="dirChart"]');
+    for (const canvas of dirCanvases) {
+      const idx = Number(canvas.id.replace("dirChart", ""));
+      if (!dirCharts[idx]) {
+        await toggleDirChart(idx);
+      }
+    }
+
+    const leaderName = document.getElementById("leaderEvolutionChart").dataset.leader;
+    downloadReportPDF({
+      filename: `${leaderName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-report.pdf`,
+      title: "JIC Storage Dashboard — Group Leader Report",
+      subtitle: btn.dataset.subtitle,
+      tiles: collectPageTiles(),
+      charts: collectPageCharts(),
+    });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = (tr.dataset.name || "").includes(lower) ? "" : "none";
+  });
+}
+
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.getElementById("tableBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

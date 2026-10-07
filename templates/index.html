@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ── Controls ── -->
+<div class="controls">
+  <form method="get" style="display:contents;">
+    <select name="snap" onchange="this.form.submit()" title="Snapshot">
+      {% for s in snapshots %}
+      <option value="{{ s.id }}" {% if s.id == current_snap %}selected{% endif %}>
+        {{ s.run_date }} {% if s.notes %}— {{ s.notes }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+
+    <select name="area" onchange="this.form.submit()" title="Filter by area">
+      <option value="">All areas</option>
+      {% for a in areas %}
+      <option value="{{ a.value }}" {% if a.value == area_filter %}selected{% endif %}>{{ a.label }}</option>
+      {% endfor %}
+    </select>
+
+    <input class="search-box" type="text" id="searchBox" placeholder="Filter directory…"
+           oninput="filterTable(this.value)">
+    <input type="hidden" name="snap" value="{{ current_snap }}">
+  </form>
+  {% set current_snapshot = snapshots | selectattr('id', 'equalto', current_snap) | first %}
+  {% if is_admin %}
+  <a href="{{ url_for('institute_trends') }}" class="btn-sm"
+     style="margin-left:auto; background:var(--accent); color:#fff; font-weight:600;">📈 See Institute Trends</a>
+  {% endif %}
+  <button class="btn-sm" style="{% if not is_admin %}margin-left:auto;{% endif %}"
+          data-subtitle="Snapshot: {{ current_snapshot.run_date }}{% if current_snapshot.notes %} — {{ current_snapshot.notes }}{% endif %}{% if area_filter %} · Area: {{ area_filter_label }}{% endif %}"
+          onclick="downloadOverviewReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+<!-- ── Summary tiles ── -->
+{% set ns = namespace(size_b=0, stale1_b=0, stale2_b=0, stale4_b=0) %}
+{% for r in rows %}
+  {% if r.dir_size_bytes is not none %}{% set ns.size_b = ns.size_b + r.dir_size_bytes %}{% endif %}
+  {% if r.stale_1yr_bytes_eff is not none %}{% set ns.stale1_b = ns.stale1_b + r.stale_1yr_bytes_eff %}{% endif %}
+  {% if r.stale_2yr_bytes_eff is not none %}{% set ns.stale2_b = ns.stale2_b + r.stale_2yr_bytes_eff %}{% endif %}
+  {% if r.stale_4yr_bytes_eff is not none %}{% set ns.stale4_b = ns.stale4_b + r.stale_4yr_bytes_eff %}{% endif %}
+{% endfor %}
+{% set size_tb = ns.size_b / 1e12 %}
+{% set stale1_tb = ns.stale1_b / 1e12 %}
+{% set stale2_tb = ns.stale2_b / 1e12 %}
+{% set stale4_tb = ns.stale4_b / 1e12 %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Directories</div>
+    <div class="value">{{ rows | length }}</div>
+    <div class="sub">in this view</div>
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;1yr size</div>
+    <div class="value" style="color:var(--green)">{{ "%.1f" | format(stale1_tb) }} TB</div>
+    {% if ns.size_b > 0 %}
+    <div class="sub">{{ "%.0f" | format((ns.stale1_b / ns.size_b) * 100) }}% of size</div>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;2yr size</div>
+    <div class="value" style="color:var(--amber)">{{ "%.1f" | format(stale2_tb) }} TB</div>
+    {% if ns.size_b > 0 %}
+    <div class="sub">{{ "%.0f" | format((ns.stale2_b / ns.size_b) * 100) }}% of size</div>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <div class="label">Stale &gt;4yr size</div>
+    <div class="value" style="color:var(--red)">{{ "%.1f" | format(stale4_tb) }} TB</div>
+    {% if ns.size_b > 0 %}
+    <div class="sub">{{ "%.0f" | format((ns.stale4_b / ns.size_b) * 100) }}% of size</div>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <div class="label">Total size</div>
+    <div class="value">{{ "%.1f" | format(size_tb) }} TB</div>
+  </div>
+</div>
+
+<!-- ── Charts ── -->
+<div class="charts-grid">
+  <div class="chart-box">
+    <h3>Storage by area (TB)</h3>
+    <canvas id="areaChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h3>Stale size by area (TB)</h3>
+    <canvas id="staleChart"></canvas>
+  </div>
+</div>
+
+<!-- ── Directory table ── -->
+<div class="card">
+  <div class="card-header">
+    <h2>Directories</h2>
+    <button class="btn-sm" onclick="downloadTableCSV('dirTable', 'directories.csv')">⬇ CSV</button>
+  </div>
+  <div class="table-wrap">
+    <table id="dirTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Directory ↕</th>
+          <th onclick="sortTable(1)">Area</th>
+          <th onclick="sortTable(2)">Size ↕</th>
+          <th onclick="sortTable(3)">Stale &gt;1yr size ↕</th>
+          <th onclick="sortTable(4)">Stale &gt;2yr size ↕</th>
+          <th onclick="sortTable(5)">Stale &gt;4yr size ↕</th>
+          {% if has_prev %}
+          <th onclick="sortTable(6)">Δ stale &gt;2yr size</th>
+          <th onclick="sortTable(7)">Δ size</th>
+          {% endif %}
+          <th data-csv="skip">Trend</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in rows %}
+        <tr data-name="{{ r.directory | lower }}">
+          <td class="mono">{{ r.directory }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ r.index_label_short }}</td>
+          <td data-value="{{ r.dir_size_bytes or 0 }}">{{ r.dir_size_raw or "—" }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_1yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_2yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_4yr_bytes_eff or 0) / 1e12) }}</td>
+          {% if has_prev %}
+          <td class="{% if r.delta_stale2_size is none %}zero{% elif r.delta_stale2_size > 0 %}up{% elif r.delta_stale2_size < 0 %}down{% else %}zero{% endif %}">
+            {% if r.delta_stale2_size is not none %}
+              {{ "%+.1f GB" | format(r.delta_stale2_size / 1e9) }}
+            {% else %}new{% endif %}
+          </td>
+          <td class="{% if r.delta_size is none %}zero{% elif r.delta_size > 0 %}up{% elif r.delta_size < 0 %}down{% else %}zero{% endif %}">
+            {% if r.delta_size is not none %}
+              {% set gb = r.delta_size / 1e9 %}
+              {{ "%+.1f GB" | format(gb) }}
+            {% else %}new{% endif %}
+          </td>
+          {% endif %}
+          <td>
+            {% if r.path %}
+            <a href="#" data-path="{{ r.path }}" data-name="{{ r.directory }}" onclick="return handleTrendClick(this);"
+               title="Show trend for {{ r.directory }}">📈</a>
+            {% else %}
+            <span style="color:var(--muted)">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function compressChartRows(rows, maxBars = 40) {
+  if (!Array.isArray(rows) || rows.length <= maxBars) return rows;
+
+  const head = rows.slice(0, maxBars - 1);
+  const tail = rows.slice(maxBars - 1);
+  const other = tail.reduce(
+    (acc, row) => {
+      acc.size_tb += Number(row.size_tb || 0);
+      acc.stale_1yr_tb += Number(row.stale_1yr_tb || 0);
+      acc.stale_2yr_tb += Number(row.stale_2yr_tb || 0);
+      acc.stale_4yr_tb += Number(row.stale_4yr_tb || 0);
+      return acc;
+    },
+    { size_tb: 0, stale_1yr_tb: 0, stale_2yr_tb: 0, stale_4yr_tb: 0 }
+  );
+
+  head.push({
+    display_label: `Other (${tail.length})`,
+    size_tb: Number(other.size_tb.toFixed(3)),
+    stale_1yr_tb: Number(other.stale_1yr_tb.toFixed(3)),
+    stale_2yr_tb: Number(other.stale_2yr_tb.toFixed(3)),
+    stale_4yr_tb: Number(other.stale_4yr_tb.toFixed(3)),
+  });
+  return head;
+}
+
+// ── Area charts ──────────────────────────────────────────────────────────────
+async function loadAreaCharts() {
+  const snap = {{ current_snap }};
+  const area = {{ area_filter | tojson }};
+  const url  = `/api/area_summary?snap=${snap}`;
+  const data = await fetch(url).then(r => r.json());
+
+  const filtered = area ? data.filter(d => d.index_label === area) : data;
+  const chartRows = compressChartRows(filtered, 40);
+  const labels   = chartRows.map(d => d.display_label.replace(' / ', '\n'));
+  const palette  = ["#4f8ef7","#34d399","#fbbf24","#f97316","#a78bfa",
+                    "#2dd4bf","#f87171","#e879f9","#60a5fa","#86efac",
+                    "#facc15","#fb923c","#c084fc","#5eead4","#fca5a5"];
+
+  new Chart(document.getElementById("areaChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "TB",
+        data: chartRows.map(d => d.size_tb),
+        backgroundColor: palette,
+      }]
+    },
+    options: {
+      animation: false,
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+        y: { ticks: { color: cssVar('--text'), font: { size: 11 } }, grid: { color: cssVar('--border') } },
+      }
+    }
+  });
+
+  new Chart(document.getElementById("staleChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "Stale >1yr TB", data: chartRows.map(d => d.stale_1yr_tb), backgroundColor: cssVar('--green') },
+        { label: "Stale >2yr TB", data: chartRows.map(d => d.stale_2yr_tb), backgroundColor: cssVar('--amber') },
+        { label: "Stale >4yr TB", data: chartRows.map(d => d.stale_4yr_tb), backgroundColor: cssVar('--red') },
+      ]
+    },
+    options: {
+      animation: false,
+      indexAxis: "y",
+      plugins: { legend: { labels: { color: cssVar('--text'), font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: cssVar('--muted') }, grid: { color: cssVar('--border') } },
+        y: { ticks: { color: cssVar('--text'), font: { size: 11 } }, grid: { color: cssVar('--border') } },
+      }
+    }
+  });
+}
+
+function startAreaChartsWhenIdle() {
+  const run = () => loadAreaCharts();
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(run, { timeout: 1000 });
+  } else {
+    setTimeout(run, 0);
+  }
+}
+
+startAreaChartsWhenIdle();
+
+// ── PDF report ────────────────────────────────────────────────────────────────
+function downloadOverviewReportPDF(btn) {
+  downloadReportPDF({
+    filename: "storage-dashboard-overview-report.pdf",
+    title: "JIC Storage Dashboard — Overview Report",
+    subtitle: btn.dataset.subtitle,
+    tiles: collectPageTiles(),
+    charts: collectPageCharts(),
+  });
+}
+
+// ── Table search ─────────────────────────────────────────────────────────────
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = tr.dataset.name.includes(lower) ? "" : "none";
+  });
+}
+
+// ── Table sort ────────────────────────────────────────────────────────────────
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.getElementById("tableBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    // Prefer an explicit numeric data-value (e.g. raw bytes) over parsing the
+    // displayed text, since human-readable sizes mix units (TB/GB/MB/KB) and
+    // comparing only the leading number would sort them wrong.
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

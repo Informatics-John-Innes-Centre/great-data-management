@@ -1,0 +1,10 @@
+[Unit]
+Description=Run isilon-daily-import.service once a day
+
+[Timer]
+# The JSON files land at 23:50 — give it a comfortable buffer.
+OnCalendar=*-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

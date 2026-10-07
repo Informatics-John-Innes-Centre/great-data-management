@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="controls">
+  <form method="get" style="display:contents;">
+    <select name="area" onchange="this.form.submit()" title="Area">
+      {% for a in areas %}
+      <option value="{{ a.value }}" {% if a.value == current_area %}selected{% endif %}>{{ a.label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="path" onchange="this.form.submit()" title="Directory">
+      <option value="">All directories in area</option>
+      {% for d in directories %}
+      <option value="{{ d.value }}" {% if d.value == current_path %}selected{% endif %}>{{ d.label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <select id="yearSelect" title="Year" onchange="onYearChange()"></select>
+  <input class="search-box" type="text" id="searchBox" placeholder="Filter directories…"
+         oninput="filterTable(this.value)">
+  <button class="btn-sm" style="margin-left:auto"
+          data-subtitle="Area: {{ current_area_label }}{% if current_path %} · Directory: {{ directories | selectattr('value', 'equalto', current_path) | map(attribute='label') | first }}{% endif %}"
+          onclick="downloadEvolutionReportPDF(this)">⬇ Download PDF Report</button>
+</div>
+
+<div class="chart-box" style="margin-bottom:20px;">
+  <div class="card-header" style="margin-bottom:14px;">
+    <h3 style="margin-bottom:0;">{% if is_admin %}Institute Evolution (All Enabled Areas){% else %}Your Areas Evolution (All Accessible Areas){% endif %}</h3>
+    <span id="instituteChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+  </div>
+  <canvas id="instituteEvolutionChart"></canvas>
+</div>
+
+{% if directories | length == 1 %}
+{# You only have access to one directory in this area, so "Area Evolution"
+   and "Directory Evolution" would show the exact same line twice — show
+   just one chart instead of the redundant pair. #}
+<div class="charts-grid" style="grid-template-columns: 1fr;">
+  <div class="chart-box">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+      <h3 style="margin-bottom:0;">{{ current_area_label }} Evolution: {{ directories[0].label }}</h3>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <span id="directoryChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+        {% if current_path and area_has_subdirs %}
+        <a href="{{ url_for('directory_explorer', path=current_path) }}" class="btn-sm" title="See subdirectories of this directory">📂 Subdirectories</a>
+        {% endif %}
+      </div>
+    </div>
+    <p style="color:var(--muted); font-size:12px; margin-bottom:14px;">
+      {{ directories[0].label }} is the only directory you can see in {{ current_area_label }}, so
+      the area total and this directory are the same — shown once here instead of twice.
+    </p>
+    <canvas id="directoryEvolutionChart"></canvas>
+  </div>
+</div>
+{% else %}
+<div class="charts-grid">
+  <div class="chart-box">
+    <div class="card-header" style="margin-bottom:14px;">
+      <h3 style="margin-bottom:0;">Area Evolution: {{ current_area_label }}</h3>
+      <span id="areaChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+    </div>
+    <canvas id="areaEvolutionChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+      <h3 style="margin-bottom:0;">Directory Evolution{% if current_path %}: {{ directories | selectattr('value', 'equalto', current_path) | map(attribute='label') | first }}{% endif %}</h3>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <span id="directoryChartLoading" class="loading-badge" style="display:none;">Loading…</span>
+        {% if current_path and area_has_subdirs %}
+        <a href="{{ url_for('directory_explorer', path=current_path) }}" class="btn-sm" title="See subdirectories of this directory">📂 Subdirectories</a>
+        {% endif %}
+      </div>
+    </div>
+    <canvas id="directoryEvolutionChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h2>Directories — {{ current_area_label }}{% if latest_snapshot %} (latest snapshot: {{ latest_snapshot.run_date }}){% endif %}</h2>
+    <button class="btn-sm" onclick="downloadTableCSV('dirTable', 'evolution-directories.csv')">⬇ CSV</button>
+  </div>
+  <div class="table-wrap">
+    <table id="dirTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Directory ↕</th>
+          <th onclick="sortTable(1)">Area</th>
+          <th onclick="sortTable(2)">Size ↕</th>
+          <th onclick="sortTable(3)">Stale &gt;1yr size ↕</th>
+          <th onclick="sortTable(4)">Stale &gt;2yr size ↕</th>
+          <th onclick="sortTable(5)">Stale &gt;4yr size ↕</th>
+          {% if has_prev %}
+          <th onclick="sortTable(6)">Δ size</th>
+          {% endif %}
+          <th data-csv="skip">Trend</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in directory_rows %}
+        <tr data-name="{{ r.directory | lower }}">
+          <td class="mono">{{ r.directory }}</td>
+          <td style="color:var(--muted); font-size:12px">{{ r.index_label_short }}</td>
+          <td data-value="{{ r.dir_size_bytes or 0 }}">{{ r.dir_size_raw or "—" }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_1yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_2yr_bytes_eff or 0) / 1e12) }}</td>
+          <td>{{ "%.1f TB" | format((r.stale_4yr_bytes_eff or 0) / 1e12) }}</td>
+          {% if has_prev %}
+          <td class="{% if r.delta_size is none %}zero{% elif r.delta_size > 0 %}up{% elif r.delta_size < 0 %}down{% else %}zero{% endif %}">
+            {% if r.delta_size is not none %}
+              {{ "%+.1f GB" | format(r.delta_size / 1e9) }}
+            {% else %}new{% endif %}
+          </td>
+          {% endif %}
+          <td>
+            <a href="#" data-path="{{ r.path }}" data-name="{{ r.directory }}" onclick="return handleTrendClick(this);"
+               title="Show trend for {{ r.directory }}">📈</a>
+            {% if area_has_subdirs %}
+            <a href="{{ url_for('directory_explorer', path=r.path) }}"
+               title="Explore subdirectories of {{ r.directory }}">📂</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not directory_rows %}
+        <tr><td colspan="{{ has_prev and 8 or 7 }}" style="color:var(--muted)">No directories found for this area.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const evolutionChartControllers = {};
+
+async function loadEvolutionChart(canvasId, query, year, loadingId) {
+  if (!document.getElementById(canvasId)) return; // not on the page (e.g. area/directory collapsed into one chart)
+  if (loadingId) setLoading(loadingId, true);
+  let data;
+  try {
+    data = await fetch(`/api/evolution?${query}`).then(r => r.json());
+  } finally {
+    if (loadingId) setLoading(loadingId, false);
+  }
+  evolutionChartControllers[canvasId] = createTrendChart(document.getElementById(canvasId), data, year);
+}
+
+function onYearChange() {
+  const year = getSelectedYear("yearSelect");
+  Object.values(evolutionChartControllers).forEach(c => c.setYear(year));
+}
+
+const currentArea = {{ current_area | tojson }};
+const currentPath = {{ current_path | tojson }};
+
+(async () => {
+  // Institute Evolution covers every enabled area, so its date range drives
+  // which years the selector offers.
+  setLoading("instituteChartLoading", true);
+  let instituteData;
+  try {
+    instituteData = await fetch("/api/evolution?").then(r => r.json());
+  } finally {
+    setLoading("instituteChartLoading", false);
+  }
+  populateYearSelectFromData("yearSelect", instituteData);
+  const year = getSelectedYear("yearSelect");
+
+  evolutionChartControllers["instituteEvolutionChart"] = createTrendChart(document.getElementById("instituteEvolutionChart"), instituteData, year);
+  loadEvolutionChart("areaEvolutionChart", `area=${encodeURIComponent(currentArea)}`, year, "areaChartLoading");
+  if (currentPath) {
+    loadEvolutionChart("directoryEvolutionChart", `path=${encodeURIComponent(currentPath)}`, year, "directoryChartLoading");
+  }
+})();
+
+// ── PDF report ────────────────────────────────────────────────────────────────
+function downloadEvolutionReportPDF(btn) {
+  downloadReportPDF({
+    filename: "area-evolution-report.pdf",
+    title: "JIC Storage Dashboard — Evolution Report",
+    subtitle: btn.dataset.subtitle,
+    charts: collectPageCharts(),
+  });
+}
+
+// ── Table search / sort ─────────────────────────────────────────────────────
+function filterTable(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll("#tableBody tr").forEach(tr => {
+    tr.style.display = (tr.dataset.name || "").includes(lower) ? "" : "none";
+  });
+}
+
+let sortDir = {};
+function sortTable(col) {
+  const tbody = document.getElementById("tableBody");
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+  const asc   = !(sortDir[col]);
+  sortDir     = {};
+  sortDir[col] = asc;
+
+  rows.sort((a, b) => {
+    const ca = a.cells[col], cb = b.cells[col];
+    if (ca?.dataset.value !== undefined && cb?.dataset.value !== undefined) {
+      const dva = parseFloat(ca.dataset.value), dvb = parseFloat(cb.dataset.value);
+      return asc ? dva - dvb : dvb - dva;
+    }
+    const va = ca?.innerText.trim() || "";
+    const vb = cb?.innerText.trim() || "";
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ""));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+
+{% endblock %}

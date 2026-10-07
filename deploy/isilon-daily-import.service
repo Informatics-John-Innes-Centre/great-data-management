@@ -1,0 +1,12 @@
+[Unit]
+Description=Import Isilon SmartQuotas daily JSON dump into the Diskover Dashboard DB
+After=network.target
+
+[Service]
+Type=oneshot
+User=jicstreamlit
+Group=jicstreamlit
+WorkingDirectory=/opt/diskover-dashboard
+Environment="PATH=/opt/diskover-dashboard/venv/bin"
+EnvironmentFile=-/etc/diskover-dashboard.env
+ExecStart=/opt/diskover-dashboard/venv/bin/python /opt/diskover-dashboard/import_isilon_daily.py --auto

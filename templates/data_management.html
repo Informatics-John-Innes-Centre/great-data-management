@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Data Management Guide</h2>
+  <p style="color:var(--muted); margin-bottom:16px;">
+    From the JIC Data Management course — where to store your data, good habits, and how to look after it.
+  </p>
+  <div style="background:rgba(248,113,113,.08); border:1px solid var(--border); border-radius:8px; padding:16px 18px; margin-bottom:16px;">
+    <strong style="color:var(--red)">Here your data is NOT safe</strong>
+    <ul style="margin:10px 0 0 18px; color:var(--text); line-height:1.8;">
+      <li>Instruments and the computers attached to them</li>
+      <li>Employee devices — laptops, desktops, phones, etc.</li>
+      <li>External devices — hard drives, USB sticks, SD cards</li>
+    </ul>
+    <p style="color:var(--muted); font-size:12px; margin-top:8px;">
+      These are not backed up by IT. If it only exists here, it can be lost for good.
+    </p>
+  </div>
+
+  <div style="background:rgba(52,211,153,.08); border:1px solid var(--border); border-radius:8px; padding:16px 18px;">
+    <strong style="color:var(--green)">Use these instead — backed up by IT</strong>
+    <ul style="margin:10px 0 0 18px; color:var(--text); line-height:1.8;">
+      <li><strong>U drive</strong> (<code>\\nbi-ufiles\username</code>) — up to 20 GB, good for personal documents that don't need sharing.</li>
+      <li><strong>OneDrive and SharePoint</strong> — for documents that need to be shared or synced across devices.</li>
+      <li><strong>Computing shared storage</strong> (<code>\\nbi-cfs2</code>) — good for shared documents like protocols and SOPs; small quota, not for big data.</li>
+      <li><strong>HPC storage / Isilon</strong> (<code>\\jic-hpc-data</code>) — the right place for research data, including everything tracked on this dashboard.</li>
+    </ul>
+  </div>
+
+
+</div>
+
+<div class="card">
+  <h2>Good habits</h2>
+  <ul style="margin:0 0 0 18px; line-height:1.8;">
+    <li>Treat raw data as read-only — work on copies, never edit the original file.</li>
+    <li>A single copy is a single point of failure. Automate backups in more than one place — <strong>a snapshot is not a backup</strong>.</li>
+    <li>Don't run heavy I/O analysis jobs directly in a Group folder — use a Scratch area for that instead.</li>
+    <li>Avoid cryptic filenames like <code>new_final2_real.bam</code> — use clear, consistent naming.</li>
+    <li>Document sample origins, processing steps, and tool versions — unlabelled data becomes unusable, even to you a year later.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Metadata: don't leave your data unlabelled</h2>
+  <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+    <div style="flex:1 1 320px; min-width:0;">
+      <p style="line-height:1.7; margin-bottom:12px;">
+        Your final results are only as useful as your documentation. Without metadata, even you won't
+        remember what a dataset was, where it came from, or how it was produced a year from now.
+      </p>
+      <p style="line-height:1.7; margin-bottom:8px;">At minimum, document:</p>
+      <ul style="margin:0 0 0 18px; line-height:1.8;">
+        <li>Data sources and versions</li>
+        <li>Parameters and tools used, including their versions</li>
+        <li>The rationale behind any choices made, and known caveats</li>
+      </ul>
+    </div>
+    <img src="{{ url_for('static', filename='metadata.png') }}" alt="Unlabeled data is just a mystery jar — three unlabelled jars vs three jars labelled flour, salt, and sugar"
+         style="width:500px; max-width:100%; border-radius:8px; flex-shrink:0;">
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recovering deleted or modified files</h2>
+  <p style="line-height:1.7; margin-bottom:0;">
+    The Isilon automatically takes snapshots of data (retention varies by folder). If you've just
+    deleted or overwritten something, the chances of recovering it are high — the longer you wait,
+    the lower the chances get. Permissions on a snapshot are identical to the original data, and
+    snapshots can be browsed from any device — the best way to find what's available is to look
+    through the snapshot folders directly.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Sharing data with collaborators</h2>
+  <ul style="margin:0 0 0 18px; line-height:1.8;">
+    <li><strong>Small files</strong> — OneDrive/SharePoint</li>
+    <li><strong>Up to 300 GB</strong> — <a href="https://dropoff.nbi.ac.uk/" target="_blank" rel="noopener">Dropoff</a>, easy web-based transfer</li>
+    <li><strong>Large or recurring transfers</strong> — <a href="https://www.globus.org/" target="_blank" rel="noopener">Globus</a>, no practical size limit</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>The ideal data pipeline</h2>
+  <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+    <div style="flex:1 1 320px; min-width:0;">
+      <p style="line-height:1.7; margin-bottom:0;">
+        Raw data and results, with proper metadata, belong in an <strong>Archive</strong> area once
+        you're done actively working with them, ready to feed an online repository or publication.
+        Scripts and workflows
+        live in your HPC home directory, kept under <strong>version control</strong> (GitHub, GitLab)
+        rather than as loose files only you can see — that way your line manager and colleagues can
+        access them too, not just you. Heavy intermediate files that don't need to last belong in
+        <strong>Scratch</strong> — and should be removed once you're finished with them. That's exactly
+        what the "Legacy / Scratch / Archive" areas tracked on this dashboard are for.
+      </p>
+    </div>
+    <img src="{{ url_for('static', filename='pipeline.png') }}" alt="Ideal data pipeline: raw data and results to Isilon Archive, feeding an online repository and publication; scripts and workflows in the HPC home directory; heavy intermediate files in Isilon Scratch, removed once done"
+         style="width:719px; max-width:100%; border-radius:8px; flex-shrink:0;">
+  </div>
+</div>
+
+<div class="card">
+  <h2>Practice: the path game</h2>
+  <p style="line-height:1.7; margin-bottom:0;">
+    Want to get comfortable with relative and absolute filesystem paths? Try
+    <strong>nbipath</strong>, a small terminal game for exactly that —
+    <a href="https://github.com/Informatics-John-Innes-Centre/nbipath" target="_blank" rel="noopener">github.com/Informatics-John-Innes-Centre/nbipath</a>.
+  </p>
+</div>
+
+<div class="card">
+  <a class="btn" href="{{ url_for('data_management_presentation') }}" style="display:inline-block;">
+    Download full presentation (PPTX)
+  </a>
+  <p style="color:var(--muted); font-size:12px; margin-top:10px; margin-bottom:0;">
+    Covers everything above plus the hands-on half of the course — command-line file handling,
+    compression, checksums, and uploading data to public repositories (ENA/SRA/GEO).
+  </p>
+</div>
+
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="text-align:center; padding: 60px;">
+  <div style="font-size:48px; margin-bottom:16px;">📭</div>
+  <h2 style="font-size:18px; color:var(--text); margin-bottom:8px;">No data yet</h2>
+  <p style="color:var(--muted);">
+    Run the scraper and import a CSV first:<br><br>
+    <code style="background:var(--border); padding:6px 12px; border-radius:6px;">
+      python import_csv.py /path/to/csvs --date 2026-09-01
+    </code>
+  </p>
+</div>
+{% endblock %}
