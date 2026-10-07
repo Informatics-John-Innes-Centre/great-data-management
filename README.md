@@ -1,18 +1,79 @@
-# Diskover Storage Dashboard
+# Great Data Management — Storage Dashboard
 
-Storage tracking for JIC. Directory size and staleness data comes from
-two independent sources that feed the same database:
+A web dashboard for understanding where an institute's research storage is
+actually going: which groups/platforms/projects are using the most space,
+which of that is "stale" (untouched for 1/2/4+ years), how usage is trending
+over time, and where space might be reclaimed (duplicate files, runaway
+growth, a forgotten dataset nobody's opened in years). It's aimed at both
+day-to-day self-service (a group leader checking their own footprint) and
+institute-wide oversight (an admin view across every area at once).
 
-- **Diskover** (monthly, manual) — a web crawler scraped by `diskover_complex.py`,
-  giving atime-based staleness (`>1yr`/`>2yr`/`>4yr`) and subdirectory-level size.
-- **Isilon SmartQuotas** (daily, automatic) — a JSON dump the storage cluster
-  already produces continuously, imported by `import_isilon_daily.py`, giving
-  much more frequent (daily) and more accurate top-level directory size, with
-  no crawling involved.
+## Origin and status
 
-Where both cover the same directory, the dashboard shows daily size resolution
-with monthly staleness overlaid — see "How trend charts combine both sources"
-below.
+This was built by the Informatics team at the **John Innes Centre (JIC)**,
+one of the institutes at the Norwich BioScience Institutes (NBI) campus, to
+solve a real and ongoing problem: understanding and managing growth across a
+large multi-petabyte research storage estate. It's shared here so other NBI
+institutes (or anyone else facing the same problem) can adopt and adapt it
+for their own storage environment, rather than building something equivalent
+from scratch.
+
+It's a genuine working tool, actively used and iterated on at JIC — not a
+polished, institute-agnostic product. Adapting it to a different storage
+environment will mean editing some JIC-specific assumptions (filesystem root
+paths, LDAP group conventions, area naming) — see
+["Adapting this for your institute"](#adapting-this-for-your-institute) below
+for exactly what to look at.
+
+## Where the data comes from
+
+Directory size and staleness data comes from **two independent sources**
+that feed the same database, chosen because between them they cover what
+neither does alone:
+
+- **[Diskover](https://github.com/diskoverdata/diskover-community)** (monthly,
+  semi-manual) — an open-source filesystem crawler/indexer (built on
+  Elasticsearch) that regularly walks the filesystem and records, per file,
+  its size and last-accessed time. JIC already runs a Diskover instance for
+  general-purpose search; this project doesn't crawl the filesystem itself —
+  `diskover_complex.py` instead queries an *existing* Diskover instance for
+  its results, to get atime-based staleness (`>1yr`/`>2yr`/`>4yr`) and
+  subdirectory-level size breakdowns that a basic quota system can't provide.
+- **Isilon SmartQuotas** (daily, automatic) — the storage cluster's own
+  built-in daily quota-usage report, exported as JSON and imported by
+  `import_isilon_daily.py`. Far more frequent (daily vs. monthly) and more
+  accurate for top-level directory size, but it has no concept of
+  staleness and no per-file/subdirectory detail — just a size number per
+  quota'd path, per day.
+
+Where both cover the same directory, the dashboard shows daily size
+resolution with monthly staleness overlaid — see "How trend charts combine
+both sources" below. If your institute only has one of these two systems (or
+neither, or something else entirely — a different crawler, a different
+storage platform's own quota reporting), the two import paths are
+independent enough that you could adapt or drop either one separately.
+
+## A note on APIs (and a good first contribution)
+
+**Diskover is used here via web scraping, not a documented API.** JIC's
+Diskover deployment doesn't expose a stable, documented API for this kind of
+bulk querying — so `diskover_complex.py` logs into Diskover's own *web UI*
+(the same pages a human would browse) with `requests`/`BeautifulSoup`, and
+parses the HTML it gets back, the same way a browser would render it. This
+works, but it's slower than a real API call would be (one HTTP request per
+page of results, for every subdirectory), and it's fragile to Diskover UI
+changes — this project has already had to adapt more than once to small
+differences in page structure between Diskover versions/deployments (see the
+`get_index_crawl_status()` and `resolve_deep_archive_shard_root()` comments
+in `diskover_complex.py` for two concrete examples).
+
+If your Diskover deployment (or whichever indexer you use instead) exposes a
+real API — or if a future Diskover version adds one — rewriting the crawler
+to use it directly would be a meaningful, self-contained improvement: faster
+crawls, less fragility, and probably simpler code than the current
+scrape-and-parse approach. This is one of the more approachable "good first
+contribution" pieces of this codebase if you want to improve it rather than
+just run it as-is.
 
 ## Architecture
 
@@ -48,6 +109,48 @@ flowchart LR
 ```
 
 ---
+
+## Adapting this for your institute
+
+This was written for JIC's specific storage layout, LDAP structure, and
+Diskover/Isilon deployment — none of that is generic, and there's no
+institute-selection config to flip. Forking this for a different institute
+means finding and editing the JIC-specific assumptions below, in your own
+copy, before (or while) you deploy it. None of this needs restructuring the
+code — it's all plain constants, grouped together in each file.
+
+- **Filesystem root paths** — `INDEX_ROOT_PATHS` in `diskover_complex.py`
+  hardcodes every known Diskover index name → real filesystem root path
+  (e.g. `/ifs/apricot/JIC/PrimaryData/GROUP_SCRATCH`). Replace with your own
+  indices and paths; `get_root_path()` falls back to auto-detecting an
+  unknown index's root by sampling search results, so this doesn't need to
+  be exhaustive on day one.
+- **The Diskover instance URL** — `BASE` near the top of `diskover_complex.py`.
+- **Area/tier naming** — `AREA_DISPLAY_OVERRIDES`, `INSTITUTE_TIERS`,
+  `GROUP_AREA_PATTERNS` in `app.py` encode JIC's specific storage tiers
+  (Legacy/Scratch/Archive/Deep Archive) and area-name patterns
+  ("Research Groups", "Group Scratch", ...). If your storage isn't organized
+  into comparable tiers, Institute Trends and the tier-stacked evolution
+  charts won't be meaningful until these are adjusted — everything else
+  (Overview, Area Evolution, Big Files, Duplicate Files) doesn't depend on
+  this tier concept at all.
+- **LDAP structure** — `LDAP_ALLOWED_GROUP_DN`, `LDAP_REQUIRED_GROUP_DNS`,
+  and the rest of the LDAP settings are environment variables (see the table
+  under "Secrets" below and `deploy/diskover-dashboard.env.example`), not
+  hardcoded — these just need real values for your directory, no code
+  changes. `GROUP_CN_PREFIXES`/`RG_SUGGESTION_PREFIXES` in `app.py` do
+  hardcode JIC's naming convention for group-related LDAP groups (`RG-`,
+  `RGGRANT-`, `ARCHIVE-JIC-`) and would need adjusting to match yours.
+- **Branding** — `static/` has JIC's logo and the "Great Data Management"
+  GTA-themed header easter egg; `templates/base.html`'s `<title>` and the
+  footer text in each template mention JIC by name. All cosmetic, replace
+  freely — the GTA easter egg is a fun default, not a load-bearing feature,
+  so remove it if it's not your team's sense of humor.
+- **The Data Management Guide content** (`templates/data_management.html`,
+  `documents/*.pptx`/`*.pdf`) is JIC's own general research-data-management
+  guidance (not derived from the dashboard's own data) — useful as a worked
+  example of what to put there, but written for JIC's own policies and
+  support contacts, not generic advice.
 
 ## 1. On the remote VM — one-time setup
 
