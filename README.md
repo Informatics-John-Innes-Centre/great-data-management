@@ -154,16 +154,23 @@ code — it's all plain constants, grouped together in each file.
 
 ## 1. On the remote VM — one-time setup
 
+Every path, username, and account name below (`<install-dir>`,
+`<service-account>`, `<db-user>`, ...) is a placeholder — pick your own
+values to match how your institute already names things, there's nothing
+special about any specific name. `<service-account>` in particular needs to
+be a real local/service account you create yourself; nothing in this project
+assumes one already exists.
+
 ### 1a. MySQL database
 
 ```bash
 mysql -u root -p <<EOF
-CREATE USER 'diskover'@'localhost' IDENTIFIED BY 'your_password';
-CREATE DATABASE diskover_dashboard CHARACTER SET utf8mb4;
-GRANT ALL ON diskover_dashboard.* TO 'diskover'@'localhost';
+CREATE USER '<db-user>'@'localhost' IDENTIFIED BY '<db-password>';
+CREATE DATABASE <db-name> CHARACTER SET utf8mb4;
+GRANT ALL ON <db-name>.* TO '<db-user>'@'localhost';
 EOF
 
-mysql -u diskover -p diskover_dashboard < schema.sql
+mysql -u <db-user> -p <db-name> < schema.sql
 ```
 
 `schema.sql` creates every table the app needs. `import_csv.py` and
@@ -172,10 +179,16 @@ mysql -u diskover -p diskover_dashboard < schema.sql
 hasn't been re-applied since they were added, so a fresh deployment or an
 older DB both end up in the same state.
 
+`config.py` defaults `<db-user>`/`<db-name>` to `diskover`/`diskover_dashboard`
+if you don't set `DISKOVER_DB_USER`/`DISKOVER_DB_NAME` — if you picked
+different values above, set those two environment variables to match
+(alongside `DISKOVER_DB_PASS`, below), or the app will silently try to
+connect as the wrong user.
+
 ### 1b. Python environment
 
 ```bash
-cd /opt/diskover-dashboard   # or wherever you put the files
+cd <install-dir>   # wherever you put these files, e.g. /opt/<your-app-name>
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -194,14 +207,18 @@ startup if any are missing, rather than silently falling back to a weak
 default. Everything else (hosts, ports, DNs) has a sensible default and can
 be left as-is.
 
-Create `/etc/diskover-dashboard.env` from the example and fill in real values:
+Create an environment file from the example and fill in real values. The
+shipped `deploy/diskover-dashboard.service` reads it from
+`/etc/diskover-dashboard.env` by default — using that exact path is the
+path of least resistance (as below); if you'd rather put it somewhere else,
+just update the `EnvironmentFile=` line in that unit file to match:
 
 ```bash
-sudo install -d -m 750 -o root -g diskover /etc/diskover-dashboard
+sudo install -d -m 750 -o root -g <service-account> /etc/diskover-dashboard
 cp deploy/diskover-dashboard.env.example /etc/diskover-dashboard.env
 # generate a real secret key instead of the placeholder:
 python3 -c "import secrets; print(secrets.token_hex(32))"
-sudo chown root:diskover /etc/diskover-dashboard.env
+sudo chown root:<service-account> /etc/diskover-dashboard.env
 sudo chmod 640 /etc/diskover-dashboard.env
 ```
 
