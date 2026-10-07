@@ -15,6 +15,11 @@ def _required_env(name):
     return value
 
 
+# Demo mode (see demo/ and docker-compose.yml): skips LDAP entirely — any
+# username signs in as an admin. Only for the self-contained mock-data demo,
+# never for a deployment holding real data.
+DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in ("1", "true", "yes")
+
 DB_HOST = os.getenv("DISKOVER_DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DISKOVER_DB_PORT", 3306))
 DB_USER = os.getenv("DISKOVER_DB_USER", "diskover")
@@ -27,7 +32,10 @@ LDAP_PORT = int(os.getenv("LDAP_PORT", 3268))
 LDAP_USE_SSL = os.getenv("LDAP_USE_SSL", "false").lower() == "true"
 LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", "DC=nbi,DC=ac,DC=uk")
 LDAP_BIND_USER_DN = os.getenv("LDAP_BIND_USER_DN", "CN=ldapuser,OU=NBIPUsers,OU=NBIUsers,DC=nbi,DC=ac,DC=uk")
-LDAP_BIND_USER_PASSWORD = _required_env("LDAP_BIND_USER_PASSWORD")
+LDAP_BIND_USER_PASSWORD = (
+    os.getenv("LDAP_BIND_USER_PASSWORD", "") if DEMO_MODE
+    else _required_env("LDAP_BIND_USER_PASSWORD")
+)
 LDAP_ALLOWED_GROUP_DN = os.getenv(
     "LDAP_ALLOWED_GROUP_DN",
     "CN=PLAT-Informatics,OU=JICPlatforms,OU=NBIGroups,DC=nbi,DC=ac,DC=uk",

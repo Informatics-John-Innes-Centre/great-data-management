@@ -50,6 +50,18 @@
       <div class="flash-messages error">{{ error }}</div>
     {% endif %}
 
+    {% if demo_mode %}
+    <p style="margin-bottom:14px;">
+      <strong>Demo mode:</strong> no password needed. You'll sign in as an admin
+      with synthetic data; use <em>Acting as</em> in the header to see what a
+      group member would see.
+    </p>
+    <form method="post">
+      <label for="username" style="display:block; margin-bottom:6px; color:var(--muted);">Username</label>
+      <input id="username" name="username" type="text" value="demo" style="width:100%; margin-bottom:16px;">
+      <button type="submit" style="width:100%;">Enter demo</button>
+    </form>
+    {% else %}
     <form method="post">
       <label for="username" style="display:block; margin-bottom:6px; color:var(--muted);">Username</label>
       <input id="username" name="username" type="text" required style="width:100%; margin-bottom:12px;">
@@ -59,6 +71,7 @@
 
       <button type="submit" style="width:100%;">Sign in</button>
     </form>
+    {% endif %}
   </div>
 
   <img src="{{ url_for('static', filename='JIC_Informatics.png') }}"

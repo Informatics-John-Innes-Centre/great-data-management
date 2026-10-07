@@ -1,0 +1,33 @@
+# Self-contained demo: MariaDB + the dashboard, filled with synthetic data.
+#   docker compose up --build    →    http://localhost:5000
+# Not a production setup — DEMO_MODE skips LDAP and lets anyone in as admin.
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: demo-root
+      MARIADB_DATABASE: diskover_dashboard
+      MARIADB_USER: diskover
+      MARIADB_PASSWORD: demo
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEMO_MODE: "1"
+      DISKOVER_DB_HOST: db
+      DISKOVER_DB_USER: diskover
+      DISKOVER_DB_PASS: demo
+      DISKOVER_DB_NAME: diskover_dashboard
+      APP_SECRET_KEY: demo-only-not-secret
+    ports:
+      - "5000:5000"

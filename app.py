@@ -24,7 +24,7 @@ from ldap3 import Server, Connection, ALL
 from ldap3.core.exceptions import LDAPException
 from ldap3.utils.conv import escape_filter_chars
 
-from config import APP_SECRET_KEY, get_db_config, get_ldap_config
+from config import APP_SECRET_KEY, DEMO_MODE, get_db_config, get_ldap_config
 from duplicate_finder import cluster_duplicate_files
 
 app = Flask(__name__)
@@ -1180,6 +1180,7 @@ def inject_permissions():
         "act_as_group_options": get_db_group_suggestions() if full_access else [],
         "short_area_label": short_area_label,
         "human_bytes": human_bytes,
+        "demo_mode": DEMO_MODE,
     }
 
 
@@ -1306,26 +1307,38 @@ def login():
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
 
-        if not username or not password:
+        user_data = None
+        if DEMO_MODE:
+            # Mock-data demo only (see config.DEMO_MODE): no LDAP, everyone is
+            # an admin — the header's "Acting as" dropdown then previews the
+            # restricted group-member view.
+            user_data = {
+                "username": username or "demo",
+                "full_name": "Demo User",
+                "email": "",
+                "distinguished_name": "",
+                "group_cns": [],
+                "is_informatics": True,
+            }
+        elif not username or not password:
             error = "Username and password are required."
         elif _missing_ldap_settings():
             missing = ", ".join(_missing_ldap_settings())
             error = f"LDAP configuration is incomplete. Missing: {missing}."
         else:
-            user_data, err = _ldap_authenticate(username, password)
-            if err:
-                error = err
-            else:
-                ensure_admin_tables()
-                session.clear()
-                session["authenticated"] = True
-                session["username"] = user_data["username"]
-                session["full_name"] = user_data["full_name"]
-                session["email"] = user_data["email"]
-                session["distinguished_name"] = user_data["distinguished_name"]
-                session["group_cns"] = user_data["group_cns"]
-                session["is_informatics"] = user_data["is_informatics"]
-                return redirect(_safe_next_url(request.args.get("next", "")))
+            user_data, error = _ldap_authenticate(username, password)
+
+        if user_data and not error:
+            ensure_admin_tables()
+            session.clear()
+            session["authenticated"] = True
+            session["username"] = user_data["username"]
+            session["full_name"] = user_data["full_name"]
+            session["email"] = user_data["email"]
+            session["distinguished_name"] = user_data["distinguished_name"]
+            session["group_cns"] = user_data["group_cns"]
+            session["is_informatics"] = user_data["is_informatics"]
+            return redirect(_safe_next_url(request.args.get("next", "")))
 
     return render_template("login.html", error=error)
 

@@ -75,6 +75,36 @@ scrape-and-parse approach. This is one of the more approachable "good first
 contribution" pieces of this codebase if you want to improve it rather than
 just run it as-is.
 
+## Try it: Docker demo with mock data
+
+To look around without Diskover, Isilon, LDAP or a real database:
+
+```bash
+docker compose up --build
+# then open http://localhost:5000 and click "Enter demo"
+```
+
+This starts MariaDB (initialised from `schema.sql`) and the app. On first start
+the app runs `demo/seed_demo_data.py`, which fills the database with a fully
+synthetic estate: ten fictional groups named after historical plant
+scientists, plus projects, platforms, instruments and user homes, across
+every tier. It covers 18 months of snapshots and about 4 months of daily
+Isilon-style sizes, all dated relative to today. A few things are planted for
+you to find:
+
+- **Growth Alerts:** a sudden surge, a cleanup and a fast-growing linked project.
+- **Duplicates:** the same reference databases held by several groups, and one
+  run kept in Legacy, Scratch and Archive.
+- **Reclaimed space:** a big Legacy → Archive migration a few months back.
+
+`DEMO_MODE=1` (set in `docker-compose.yml`) skips LDAP. Any username signs in
+as an admin, and the header's **Acting as** dropdown shows what a single
+group's member would see. A banner on every page marks the data as mock.
+**Never set `DEMO_MODE` on a real deployment.**
+
+Data persists between `docker compose up` runs. To reset with fresh dates, run
+`docker compose down -v` and then start it again.
+
 ## Architecture
 
 ```
@@ -808,6 +838,7 @@ erDiagram
 | `import_csv.py` | Loads a monthly CSV folder (Diskover) into MySQL |
 | `import_isilon_daily.py` | Loads a daily Isilon SmartQuotas JSON dump into MySQL |
 | `generate_mock_data.py` | Synthesizes mock future months for local testing — clones the latest real monthly snapshot forward with random growth, **and**, if `isilon_quota_stats` has real data, clones its latest day forward one day at a time (smaller daily growth) through the end of the last mocked month, so daily-resolution features (trend charts, Storage Alerts & Insights) have realistic mock data too, not just the monthly side. Use `--no-isilon` to skip that part |
+| `demo/seed_demo_data.py` | Fills an **empty** database with a fully synthetic estate from scratch (no real data needed) for the Docker demo — see "Try it: Docker demo with mock data". Skips if snapshots already exist; `--force` wipes and reseeds |
 | `delete_snapshot.py` | Removes one or more monthly snapshots (and their `directory_stats`/`subdirectory_stats` rows), **and** any `isilon_quota_stats` rows falling in the same month(s) — since Isilon data is dated independently of snapshots, deleting a bad month cleans up both sources together |
 | `clean_old_top_files.py` | Cleans up old `top_files.csv` crawl output, locally and (optionally) from git history — see "Cleaning up old top_files.csv" below |
 | `config.py` | Shared DB/LDAP config, reads from environment |
