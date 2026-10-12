@@ -180,7 +180,7 @@ const currentPath = {{ current_path | tojson }};
 function downloadEvolutionReportPDF(btn) {
   downloadReportPDF({
     filename: "area-evolution-report.pdf",
-    title: "JIC Storage Dashboard — Evolution Report",
+    title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Evolution Report",
     subtitle: btn.dataset.subtitle,
     charts: collectPageCharts(),
   });

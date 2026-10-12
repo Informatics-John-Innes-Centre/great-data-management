@@ -7,6 +7,8 @@ __pycache__/
 *.pyc
 *.env
 deploy/
-documents/
 Dockerfile
 docker-compose.yml
+institute-local/
+runs/
+docker-compose.demo.yml

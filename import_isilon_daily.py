@@ -19,14 +19,16 @@ one specific calendar year instead (e.g. the whole current year so far).
 Data source
 -----------
 Isilon's own SmartQuotas feature, dumped daily to
-<root>/YYYY/MM/JIC-daily-YYYYMMDD.json — a raw {"quotas": [...]} listing from
+<root>/YYYY/MM/<file_prefix>YYYYMMDD.json (file_prefix from institute.yaml,
+JIC-daily- at JIC) — a raw {"quotas": [...]} listing from
 Isilon's Platform API. No crawling involved; OneFS tracks this continuously.
 Size only (logical/physical bytes, inode count) — no staleness. Diskover
 (diskover_complex.py / import_csv.py) stays the source for atime-based stale
 buckets and for subdirectory-level size, which Isilon isn't quota'd at.
 
-Note: the area-root table and label-formatting helpers below are duplicated
-from diskover_complex.py rather than imported from it, since that module
+Note: area roots come from institute.yaml (shared with the crawler), but the
+label-formatting helpers below are duplicated from diskover_complex.py rather
+than imported from it, since that module
 pulls in requests/beautifulsoup4 (crawler-only dependencies not installed in
 the server venv that runs this importer).
 
@@ -47,28 +49,11 @@ from datetime import date, timedelta
 
 import mysql.connector
 
+from institute import DISKOVER, ISILON
 
-# ── Known area roots (see diskover_complex.py's INDEX_ROOT_PATHS) ───────────
-INDEX_ROOT_PATHS = {
-    "diskover-jic-apricot-primarydata-group_scratch":       "/ifs/apricot/JIC/PrimaryData/GROUP_SCRATCH",
-    "diskover-jic-apricot-primarydata-research-groups":     "/ifs/apricot/JIC/PrimaryData/RESEARCH-GROUPS",
-    "diskover-jic-apricot-primarydata-research_projects":   "/ifs/apricot/JIC/PrimaryData/RESEARCH_PROJECTS",
-    "diskover-jic-apricot-primarydata-projects_scratch":    "/ifs/apricot/JIC/PrimaryData/PROJECTS_SCRATCH",
-    "diskover-jic-apricot-primarydata-platform_scratch":    "/ifs/apricot/JIC/PrimaryData/PLATFORM_SCRATCH",
-    "diskover-jic-apricot-primarydata-platforms":           "/ifs/apricot/JIC/PrimaryData/PLATFORMS",
-    "diskover-jic-apricot-primarydata-instruments":         "/ifs/apricot/JIC/PrimaryData/INSTRUMENTS",
-    "diskover-jic-apricot-primarydata-informatics_common":  "/ifs/apricot/JIC/PrimaryData/INFORMATICS_COMMON",
-    "diskover-jic-apricot-primarydata-hpc_software":        "/ifs/apricot/JIC/PrimaryData/HPC_SOFTWARE",
-    "diskover-jic-apricot-primarydata-services":            "/ifs/apricot/JIC/PrimaryData/SERVICES",
-    "diskover-jic-apricot-primarydata-user_homes":          "/ifs/apricot/JIC/PrimaryData/USER_HOMES",
-    "diskover-jic-apricot-loanstorage-archive-groups":      "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Groups",
-    "diskover-jic-apricot-loanstorage-archive-platforms":   "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Platforms",
-    "diskover-jic-apricot-loanstorage-archive-projects":    "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Projects",
-    "diskover-jic-peach-deeparchive-groups":                "/mnt/deep-archive/Groups",
-    "diskover-jic-peach-deeparchive-projects":              "/mnt/deep-archive/Projects",
-    "diskover-jic-peach-deeparchive-platforms":             "/mnt/deep-archive/Platforms",
-    "diskover-nbi-apricot-primarydata-reference_data":      "/ifs/apricot/NBI/PrimaryData/reference_data",
-}
+
+# ── Known area roots (institute.yaml's diskover.index_roots) ───────────────
+INDEX_ROOT_PATHS = dict(DISKOVER["index_roots"])
 
 
 def strip_date(index_name):
@@ -120,7 +105,9 @@ def match_area(abs_path):
 
 
 # ── Filename / date parsing ──────────────────────────────────────────────────
-_FILENAME_RE = re.compile(r'JIC-daily-(\d{4})(\d{2})(\d{2})\.json$')
+# Daily dumps are named <file_prefix>YYYYMMDD.json (institute.yaml's isilon.file_prefix).
+FILE_PREFIX = ISILON["file_prefix"]
+_FILENAME_RE = re.compile(re.escape(FILE_PREFIX) + r'(\d{4})(\d{2})(\d{2})\.json$')
 
 
 def parse_stat_date(filename):
@@ -128,7 +115,7 @@ def parse_stat_date(filename):
     if not m:
         raise ValueError(
             f"Can't parse a date from filename {filename!r} "
-            "(expected JIC-daily-YYYYMMDD.json)"
+            f"(expected {FILE_PREFIX}YYYYMMDD.json)"
         )
     year, month, day = (int(g) for g in m.groups())
     return date(year, month, day)
@@ -274,7 +261,7 @@ def import_file(cur, filepath):
 # ── Discovery for --auto ──────────────────────────────────────────────────────
 
 def find_json_files(root):
-    return sorted(glob.glob(os.path.join(root, "*", "*", "JIC-daily-*.json")))
+    return sorted(glob.glob(os.path.join(root, "*", "*", f"{FILE_PREFIX}*.json")))
 
 
 def already_imported_dates(cur):
@@ -288,7 +275,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Import Isilon SmartQuotas daily JSON dump(s) into MySQL."
     )
-    parser.add_argument("--file", help="Import one specific JIC-daily-YYYYMMDD.json file")
+    parser.add_argument("--file", help=f"Import one specific {FILE_PREFIX}YYYYMMDD.json file")
     parser.add_argument(
         "--auto", action="store_true",
         help="Scan --root for any dates not yet imported and import them",
@@ -324,7 +311,7 @@ def main():
         else:
             all_files = find_json_files(args.root)
             if not all_files:
-                print(f"No JIC-daily-*.json files found under {args.root}")
+                print(f"No {FILE_PREFIX}*.json files found under {args.root}")
                 return
             imported = already_imported_dates(cur)
             targets = [f for f in all_files if parse_stat_date(f) not in imported]

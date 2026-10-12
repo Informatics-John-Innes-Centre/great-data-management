@@ -11,7 +11,9 @@ from datetime import date, datetime
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
 
-BASE = "https://diskover.researchcomputing.nbi.ac.uk"
+from institute import DISKOVER, STORAGE
+
+BASE = DISKOVER["url"].rstrip("/")  # from institute.yaml
 REQUEST_TIMEOUT = 30  # seconds — every session.get()/post() call in this file uses this
 
 # Every request failure (timeout, connection error, non-200 status) anywhere
@@ -48,38 +50,10 @@ def make_run_dir(run_date=None):
     os.makedirs(run_dir, exist_ok=True)
     return run_dir
 
-# ── Known root paths derived from /etc/auto.jic ───────────────────────────────
+# ── Known root paths (institute.yaml's diskover.index_roots) ──────────────────
 # Key = index name with date suffix stripped (diskover-jic-apricot-primarydata-group_scratch)
 # Value = filesystem root path for that index
-INDEX_ROOT_PATHS = {
-    # JIC HPC — Primary Data
-    "diskover-jic-apricot-primarydata-group_scratch":       "/ifs/apricot/JIC/PrimaryData/GROUP_SCRATCH",
-    "diskover-jic-apricot-primarydata-research-groups":     "/ifs/apricot/JIC/PrimaryData/RESEARCH-GROUPS",
-    "diskover-jic-apricot-primarydata-research_projects":   "/ifs/apricot/JIC/PrimaryData/RESEARCH_PROJECTS",
-    "diskover-jic-apricot-primarydata-projects_scratch":    "/ifs/apricot/JIC/PrimaryData/PROJECTS_SCRATCH",
-    "diskover-jic-apricot-primarydata-platform_scratch":    "/ifs/apricot/JIC/PrimaryData/PLATFORM_SCRATCH",
-    "diskover-jic-apricot-primarydata-platforms":           "/ifs/apricot/JIC/PrimaryData/PLATFORMS",
-    "diskover-jic-apricot-primarydata-instruments":         "/ifs/apricot/JIC/PrimaryData/INSTRUMENTS",
-    "diskover-jic-apricot-primarydata-informatics_common":  "/ifs/apricot/JIC/PrimaryData/INFORMATICS_COMMON",
-    "diskover-jic-apricot-primarydata-hpc_software":        "/ifs/apricot/JIC/PrimaryData/HPC_SOFTWARE",
-    "diskover-jic-apricot-primarydata-services":            "/ifs/apricot/JIC/PrimaryData/SERVICES",
-    "diskover-jic-apricot-primarydata-user_homes":          "/ifs/apricot/JIC/PrimaryData/USER_HOMES",
-    # JIC Archive (LoanStorage)
-    "diskover-jic-apricot-loanstorage-archive-groups":      "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Groups",
-    "diskover-jic-apricot-loanstorage-archive-platforms":   "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Platforms",
-    "diskover-jic-apricot-loanstorage-archive-projects":    "/ifs/apricot/JIC/LoanStorage/ARCHIVE/Projects",
-    # JIC Deep Archive (peach servers) — confirmed against Diskover's own
-    # search query for this index (parent_path:/peach/deep-archive/groups);
-    # the previous /mnt/deep-archive/Groups guess never matched anything,
-    # so this area silently crawled zero directories every run.
-    "diskover-jic-peach-deeparchive-groups":                "/peach/deep-archive/groups",
-    "diskover-jic-peach-deeparchive-projects":              "/peach/deep-archive/projects",
-    "diskover-jic-peach-deeparchive-platforms":             "/peach/deep-archive/platforms",
-    # NBI
-    "diskover-nbi-apricot-primarydata-reference_data":      "/ifs/apricot/NBI/PrimaryData/reference_data",
-    # CryoEM / mango — path unknown, will be discovered automatically
-    # "diskover-jic-mango": None,
-}
+INDEX_ROOT_PATHS = dict(DISKOVER["index_roots"])
 
 
 def strip_date(index_name):
@@ -183,8 +157,8 @@ def clean_path(td):
 # ── group-area detection ────────────────────────────────────────────────────────
 # Subdirectory crawling (one level deeper than the normal area listing) is only
 # done for "Groups"-type areas, to avoid multiplying requests across every
-# user-home folder. Mirrors GROUP_AREA_PATTERNS in app.py.
-GROUP_AREA_HINTS = ("research groups", "group scratch", "archive groups", "groups")
+# user-home folder. Same institute.yaml owner_area_patterns as app.py.
+GROUP_AREA_HINTS = tuple(p.lower() for p in STORAGE["owner_area_patterns"])
 
 
 def is_group_area_label(label):
@@ -192,18 +166,11 @@ def is_group_area_label(label):
     return any(hint in value for hint in GROUP_AREA_HINTS)
 
 
-# Deep Archive's Projects/Platforms indices get the same per-subdirectory
-# file-level scan as a Groups-type area, even though their labels don't
-# match GROUP_AREA_HINTS ("Deeparchive Projects"/"Deeparchive Platforms")
-# and every other area's Projects/Platforms never gets this treatment.
-# Deliberately scoped to just these two index keys, not a general widening
-# of is_group_area_label() — the whole point of crawling Deep Archive is to
-# catalog what's sitting on it, which the Groups area already gets for free
-# but Projects/Platforms wouldn't under the normal rule.
-DEEP_ARCHIVE_FORCE_GROUP_INDEX_KEYS = {
-    "diskover-jic-peach-deeparchive-projects",
-    "diskover-jic-peach-deeparchive-platforms",
-}
+# Extra indices (institute.yaml's diskover.extra_subdir_indices) that get the
+# same per-subdirectory file-level scan as an owner area, even though their
+# labels don't match GROUP_AREA_HINTS. At JIC: Deep Archive's Projects and
+# Platforms, so what's sitting on deep archive gets catalogued too.
+DEEP_ARCHIVE_FORCE_GROUP_INDEX_KEYS = set(DISKOVER["extra_subdir_indices"])
 
 
 def is_forced_group_index(index_name):

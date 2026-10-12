@@ -31,6 +31,7 @@ from typing import Optional
 import mysql.connector
 
 from duplicate_finder import cluster_duplicate_files
+from institute import ACCESS, STORAGE, like_patterns
 
 
 # ── Size parsing ──────────────────────────────────────────────────────────────
@@ -255,21 +256,17 @@ def ensure_leader_duplicate_summary_table(cur):
     print("  Created missing table leader_duplicate_summary")
 
 
-# Mirrors app.py's GROUP_AREA_PATTERNS/GROUP_CN_PREFIXES — duplicated here
-# rather than imported, since this is a standalone CLI script with no Flask
-# dependency. Keep these two in sync with app.py's if they ever change.
-DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS = (
-    "%Research Groups%",
-    "%Group Scratch%",
-    "%Archive Groups%",
-    "%Groups%",
-)
-DUPLICATE_SUMMARY_GROUP_CN_PREFIXES = (
-    "RG-",
-    "RGGRANT-",
-    "ARCHIVE-JIC-",
-    "ARCHIVE-",
-)
+# Same institute.yaml settings as app.py's GROUP_AREA_PATTERNS/GROUP_CN_PREFIXES.
+DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS = like_patterns(STORAGE["owner_area_patterns"])
+DUPLICATE_SUMMARY_GROUP_CN_PREFIXES = tuple(ACCESS["group_cn_prefixes"])
+
+
+def _group_area_match():
+    """`index_label LIKE %s OR ...` over DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS;
+    never true (rather than invalid SQL) when an institute has no owner areas."""
+    if not DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS:
+        return "1=0"
+    return " OR ".join(["index_label LIKE %s" for _ in DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS])
 DUPLICATE_SUMMARY_TOLERANCE_PCT = 1.0
 
 
@@ -341,7 +338,7 @@ def compute_and_store_duplicate_summaries(cur, snapshot_id):
     directory linked via a directory_group_rules row whose LDAP group CN
     resolves to that leader (same RG-/RGGRANT-/ARCHIVE- prefix convention).
     """
-    area_match = " OR ".join(["index_label LIKE %s" for _ in DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS])
+    area_match = _group_area_match()
     leaders, linked_by_leader = _discover_leaders_and_linked_rules(cur, snapshot_id, area_match)
 
     cur.execute("DELETE FROM leader_duplicate_summary WHERE snapshot_id = %s", (snapshot_id,))
@@ -457,7 +454,7 @@ def compute_and_store_cross_leader_duplicates(cur, snapshot_id):
     and size. Stores at most CROSS_LEADER_DUPLICATE_MAX_CLUSTERS clusters,
     ranked by reclaimable space, fully recomputed every import.
     """
-    area_match = " OR ".join(["index_label LIKE %s" for _ in DUPLICATE_SUMMARY_GROUP_AREA_PATTERNS])
+    area_match = _group_area_match()
     leaders, linked_by_leader = _discover_leaders_and_linked_rules(cur, snapshot_id, area_match)
 
     all_rows = []

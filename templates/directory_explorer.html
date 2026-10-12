@@ -142,7 +142,7 @@ new Chart(document.getElementById("subdirChart"), {
 function downloadDirectoryReportPDF(btn) {
   downloadReportPDF({
     filename: "directory-report.pdf",
-    title: "JIC Storage Dashboard — Directory Report",
+    title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Directory Report",
     subtitle: btn.dataset.subtitle,
     tiles: collectPageTiles(),
     charts: collectPageCharts(),

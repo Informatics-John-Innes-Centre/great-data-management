@@ -5,3 +5,7 @@ venv/
 *.env
 !deploy/*.env.example
 .DS_Store
+
+# Your own institute settings and local data (see institute-template/)
+institute-local/
+runs/

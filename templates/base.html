@@ -3,20 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JIC Data Management</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-<link rel="icon" href="{{ url_for('static', filename='favicon-32.png') }}" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<title>{{ institute.app_title }}</title>
+<link rel="icon" href="{{ url_for('static', filename=branding.favicon_svg) }}" type="image/svg+xml">
+<link rel="icon" href="{{ url_for('static', filename=branding.favicon_png) }}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename=branding.apple_touch_icon) }}">
 
+{% if institute.analytics_id %}
 <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-B1FWXG5Q9C"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ institute.analytics_id }}"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
 
-  gtag('config', 'G-B1FWXG5Q9C');
+  gtag('config', {{ institute.analytics_id | tojson }});
 </script>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -254,13 +256,7 @@
   // Keyed by base tier name ("Legacy", "Archive", ...) — a bucket name like
   // "Legacy - Groups" (Group Leader Evolution) resolves to the same color as
   // the bare "Legacy" (Institute Trends) via the " - " split below.
-  const TIER_BASE_COLORS = {
-    "Legacy": "#4f8ef7",
-    "Archive": "#a78bfa",
-    "Scratch": "#2dd4bf",
-    "Deep Archive": "#f472b6",
-    "Other": "#8892a4",
-  };
+  const TIER_BASE_COLORS = {{ tier_colors | tojson }};
   const DEFAULT_TIER_COLOR = "#8892a4";
   function tierColor(tier) {
     const base = tier.includes(" - ") ? tier.split(" - ")[0] : tier;
@@ -466,35 +462,39 @@
 </script>
 </head>
 <body>
+{% if institute.app_switcher %}
 <div class="app-switcher">
-  <a href="https://informatics.jic.ac.uk/">Informatics HUB</a>
-  <a href="https://job-stats.informatics.jic.ac.uk/">HPC Job Stats</a>
-  <span class="current">Great Data Management</span>
-  <a href="https://cross-charging.informatics.jic.ac.uk/">Cross Charging</a>
-  <a href="https://repo.informatics.jic.ac.uk/">Training Repo</a>
-  <a href="https://informatics.jic.ac.uk/training-pills/">Training Pills</a>
-  <a href="https://drone-data.informatics.jic.ac.uk/">Drone Imagery Data</a>
+  {% for item in institute.app_switcher %}
+  {% if item.current %}<span class="current">{{ item.label }}</span>{% else %}<a href="{{ item.url }}">{{ item.label }}</a>{% endif %}
+  {% endfor %}
 </div>
+{% endif %}
 <header>
   <div class="brand">
     <h1>
-      <a href="https://informatics.jic.ac.uk/" title="Informatics HUB">
-        <img id="logo" src="{{ url_for('static', filename='JIC_Informatics.png') }}" alt="JIC Informatics">
+      {% if branding.header_logo_dark %}
+      <a href="{{ institute.home_url or url_for('index') }}" title="{{ institute.name }}">
+        <img id="logo" src="{{ url_for('static', filename=branding.header_logo_dark) }}" alt="{{ institute.name }}">
       </a>
+      {% endif %}
       <a href="{{ url_for('index') }}" title="Data Management home">
-        <img class="gta-toggle" src="{{ url_for('static', filename='great_data_management.png') }}"
+        <img class="gta-toggle" src="{{ url_for('static', filename=branding.app_logo) }}"
              alt="Data Management"
              onclick="event.preventDefault(); event.stopPropagation(); toggleGtaSound();">
       </a>
     </h1>
   </div>
   <nav>
+    {% if institute.data_management_guide %}
     <a href="{{ url_for('data_management') }}">Data Management Guide</a>
+    {% endif %}
     {% if session.get('authenticated') %}
       <a href="{{ url_for('index') }}">Overview</a>
       <a href="{{ url_for('evolution') }}">Area Evolution</a>
       <a href="{{ url_for('big_files') }}">Big Files</a>
+      {% if has_owner_areas %}
       <a href="{{ url_for('group_leader_evolution') }}">Group Leader Evolution</a>
+      {% endif %}
       {% if is_admin %}
       <a href="{{ url_for('institute_trends') }}">Institute Trends</a>
       <a href="{{ url_for('growth_alerts') }}">Storage Alerts &amp; Insights</a>
@@ -561,9 +561,11 @@
 {% endblock %}
 {% block content %}{% endblock %}
 </main>
-<footer>{% block footer %}Diskover storage monitor — John Innes Centre · Developed by Miguel Gonzalez-Sanchez{% endblock %}</footer>
+<footer>{% block footer %}{{ institute.footer }}{% endblock %}</footer>
 
-<audio id="gta-audio" src="{{ url_for('static', filename='GTA.mp3') }}" loop></audio>
+{% if branding.app_logo_sound %}
+<audio id="gta-audio" src="{{ url_for('static', filename=branding.app_logo_sound) }}" loop></audio>
+{% endif %}
 
 <!-- Trend modal -->
 <div id="trend-panel">
@@ -585,8 +587,8 @@
     var toggle = document.getElementById('theme-toggle');
     var logo = document.getElementById('logo');
     var LOGOS = {
-        dark: "{{ url_for('static', filename='JIC_Informatics.png') }}",
-        light: "{{ url_for('static', filename='jic_logo.png') }}"
+        dark: {{ (url_for('static', filename=branding.header_logo_dark) if branding.header_logo_dark else '') | tojson }},
+        light: {{ (url_for('static', filename=branding.header_logo_light or branding.header_logo_dark) if (branding.header_logo_light or branding.header_logo_dark) else '') | tojson }}
     };
     var ICONS = { dark: '🌙', light: '☀️' };
     var theme = root.getAttribute('data-theme') || 'dark';

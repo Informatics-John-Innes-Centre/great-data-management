@@ -1,0 +1,111 @@
+# John Innes Centre settings — the reference configuration this dashboard was
+# built for. Another institute: copy institute-template/ instead, and see the
+# comments there for what each setting means.
+
+institute:
+  name: John Innes Centre
+  short_name: JIC
+  app_title: JIC Data Management
+  footer: Diskover storage monitor — John Innes Centre · Developed by Miguel Gonzalez-Sanchez
+  login_heading: Sign in with your JIC user
+  login_hint: just your username, e.g. <code>jdoe</code>
+  home_url: https://informatics.jic.ac.uk/
+  analytics_id: G-B1FWXG5Q9C
+  data_management_guide: true
+  app_switcher:
+    - {label: Informatics HUB, url: "https://informatics.jic.ac.uk/"}
+    - {label: HPC Job Stats, url: "https://job-stats.informatics.jic.ac.uk/"}
+    - {label: Great Data Management, current: true}
+    - {label: Cross Charging, url: "https://cross-charging.informatics.jic.ac.uk/"}
+    - {label: Training Repo, url: "https://repo.informatics.jic.ac.uk/"}
+    - {label: Training Pills, url: "https://informatics.jic.ac.uk/training-pills/"}
+    - {label: Platform Advise, url: "https://informatics.jic.ac.uk/platform-advise/"}
+    - {label: Drone Imagery Data, url: "https://drone-data.informatics.jic.ac.uk/"}
+
+branding:
+  header_logo_dark: JIC_Informatics.png
+  header_logo_light: jic_logo.png
+  app_logo: great_data_management.png
+  login_logo: JIC_Informatics.png
+  login_background: background.png
+  app_logo_sound: GTA.mp3
+
+storage:
+  owner_area_patterns: [Research Groups, Group Scratch, Archive Groups, Groups]
+  user_home_patterns: [User Homes, User_Homes]
+  area_label_prefixes:
+    - "JIC-Apricot / Primarydata "
+    - "JIC Apricot / Primarydata "
+    - "JIC-Apricot / Loanstorage Archive "
+    - "JIC Apricot / Loanstorage Archive "
+  # "Legacy" was "Main" — that tier predates the current layout. Platforms
+  # keeps "Main" for display, but tier_aliases still counts it as Legacy.
+  area_display_names:
+    "JIC-Apricot / Primarydata Research Groups":   Legacy - Groups
+    "JIC Apricot / Primarydata Research Groups":   Legacy - Groups
+    "JIC-Apricot / Primarydata Research Projects": Legacy - Projects
+    "JIC Apricot / Primarydata Research Projects": Legacy - Projects
+    "JIC-Apricot / Primarydata Platforms":         Main - Platforms
+    "JIC Apricot / Primarydata Platforms":         Main - Platforms
+    "JIC-Apricot / Primarydata Group Scratch":     Scratch - Groups
+    "JIC Apricot / Primarydata Group Scratch":     Scratch - Groups
+    "JIC-Apricot / Primarydata Platform Scratch":  Scratch - Platforms
+    "JIC Apricot / Primarydata Platform Scratch":  Scratch - Platforms
+    "JIC-Apricot / Primarydata Projects Scratch":  Scratch - Projects
+    "JIC Apricot / Primarydata Projects Scratch":  Scratch - Projects
+    "JIC-Apricot / Loanstorage Archive Groups":    Archive - Groups
+    "JIC Apricot / Loanstorage Archive Groups":    Archive - Groups
+    "JIC-Apricot / Loanstorage Archive Platforms": Archive - Platforms
+    "JIC Apricot / Loanstorage Archive Platforms": Archive - Platforms
+    "JIC-Apricot / Loanstorage Archive Projects":  Archive - Projects
+    "JIC Apricot / Loanstorage Archive Projects":  Archive - Projects
+    "JIC-Peach / Deeparchive Groups":              Deep Archive - Groups
+    "JIC Peach / Deeparchive Groups":              Deep Archive - Groups
+    "JIC-Peach / Deeparchive Platforms":           Deep Archive - Platforms
+    "JIC Peach / Deeparchive Platforms":           Deep Archive - Platforms
+    "JIC-Peach / Deeparchive Projects":            Deep Archive - Projects
+    "JIC Peach / Deeparchive Projects":            Deep Archive - Projects
+  tiers: [Legacy, Scratch, Archive, Deep Archive]
+  tier_aliases: {Main: Legacy}
+  keep_tiers: [Archive, Deep Archive]
+  trends_tier_names: {Legacy: Core}
+
+access:
+  admin_group_dn: CN=PLAT-Informatics,OU=JICPlatforms,OU=NBIGroups,DC=nbi,DC=ac,DC=uk
+  # Same groups that gate flask-hpc-job-stats.
+  required_group_dns:
+    - CN=jic-hpc-group,OU=NBIGroups,DC=nbi,DC=ac,DC=uk
+    - CN=jic-hpc-training,OU=NBIGroups,DC=nbi,DC=ac,DC=uk
+  group_cn_prefixes: [RG-, RGGRANT-, ARCHIVE-JIC-, ARCHIVE-]
+  group_cn_suggestion_prefix: RG-
+
+diskover:
+  url: https://diskover.researchcomputing.nbi.ac.uk
+  # Index name (date suffix stripped) -> filesystem root, from /etc/auto.jic.
+  index_roots:
+    diskover-jic-apricot-primarydata-group_scratch:      /ifs/apricot/JIC/PrimaryData/GROUP_SCRATCH
+    diskover-jic-apricot-primarydata-research-groups:    /ifs/apricot/JIC/PrimaryData/RESEARCH-GROUPS
+    diskover-jic-apricot-primarydata-research_projects:  /ifs/apricot/JIC/PrimaryData/RESEARCH_PROJECTS
+    diskover-jic-apricot-primarydata-projects_scratch:   /ifs/apricot/JIC/PrimaryData/PROJECTS_SCRATCH
+    diskover-jic-apricot-primarydata-platform_scratch:   /ifs/apricot/JIC/PrimaryData/PLATFORM_SCRATCH
+    diskover-jic-apricot-primarydata-platforms:          /ifs/apricot/JIC/PrimaryData/PLATFORMS
+    diskover-jic-apricot-primarydata-instruments:        /ifs/apricot/JIC/PrimaryData/INSTRUMENTS
+    diskover-jic-apricot-primarydata-informatics_common: /ifs/apricot/JIC/PrimaryData/INFORMATICS_COMMON
+    diskover-jic-apricot-primarydata-hpc_software:       /ifs/apricot/JIC/PrimaryData/HPC_SOFTWARE
+    diskover-jic-apricot-primarydata-services:           /ifs/apricot/JIC/PrimaryData/SERVICES
+    diskover-jic-apricot-primarydata-user_homes:         /ifs/apricot/JIC/PrimaryData/USER_HOMES
+    diskover-jic-apricot-loanstorage-archive-groups:     /ifs/apricot/JIC/LoanStorage/ARCHIVE/Groups
+    diskover-jic-apricot-loanstorage-archive-platforms:  /ifs/apricot/JIC/LoanStorage/ARCHIVE/Platforms
+    diskover-jic-apricot-loanstorage-archive-projects:   /ifs/apricot/JIC/LoanStorage/ARCHIVE/Projects
+    diskover-jic-peach-deeparchive-groups:               /peach/deep-archive/groups
+    diskover-jic-peach-deeparchive-projects:             /peach/deep-archive/projects
+    diskover-jic-peach-deeparchive-platforms:            /peach/deep-archive/platforms
+    diskover-nbi-apricot-primarydata-reference_data:     /ifs/apricot/NBI/PrimaryData/reference_data
+  # Deep Archive's Projects/Platforms also get the per-subfolder file scan,
+  # to catalogue what's sitting there.
+  extra_subdir_indices:
+    - diskover-jic-peach-deeparchive-projects
+    - diskover-jic-peach-deeparchive-platforms
+
+isilon:
+  file_prefix: JIC-daily-

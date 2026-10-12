@@ -147,17 +147,17 @@ function populateYearSelectWithAll(selectId, data) {
   }
 }
 
-// "Legacy" displays as "Core" on this page only — see app.py's
-// INSTITUTE_TRENDS_TIER_DISPLAY_OVERRIDES for the matching tile-label
-// rename. Every other page (Group Leader Evolution, Duplicate Files, the
-// README's "Area naming" section, ...) still says "Legacy".
+// Tier renames for this page only (institute.yaml's trends_tier_names, e.g.
+// JIC's "Legacy" -> "Core") — see app.py's INSTITUTE_TRENDS_TIER_DISPLAY_
+// OVERRIDES for the matching tile-label rename. Every other page keeps the
+// tier's own name.
 function currentTierChartOpts() {
   const asPercentage = document.getElementById("instituteTierViewSelect").value === "percentage";
   // aspectRatio 1.6 (Chart.js default is ~2, i.e. flatter) makes the chart
   // noticeably taller for the same width, so the same honest data spans
   // more vertical pixels — a bit wider-feeling without distorting anything.
   return {
-    collapseCurrentMonth: false, tierDisplayNames: { "Legacy": "Core" }, asPercentage, aspectRatio: 2.6,
+    collapseCurrentMonth: false, tierDisplayNames: {{ tier_display_names | tojson }}, asPercentage, aspectRatio: 2.6,
     onLegendToggle: recomputeInstituteTotal,
   };
 }
@@ -192,7 +192,7 @@ loadInstituteTierChart();
 function downloadInstituteTrendsReportPDF(btn) {
   downloadReportPDF({
     filename: "institute-trends-report.pdf",
-    title: "JIC Storage Dashboard — Institute Trends",
+    title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Institute Trends",
     subtitle: btn.dataset.subtitle,
     tiles: collectPageTiles(),
     charts: collectPageCharts(),

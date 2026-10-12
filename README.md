@@ -80,7 +80,7 @@ just run it as-is.
 To look around without Diskover, Isilon, LDAP or a real database:
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.demo.yml up --build
 # then open http://localhost:5000 and click "Enter demo"
 ```
 
@@ -97,13 +97,14 @@ you to find:
   run kept in Legacy, Scratch and Archive.
 - **Reclaimed space:** a big Legacy → Archive migration a few months back.
 
-`DEMO_MODE=1` (set in `docker-compose.yml`) skips LDAP. Any username signs in
+`DEMO_MODE=1` (set in `docker-compose.demo.yml`) skips LDAP. Any username signs in
 as an admin, and the header's **Acting as** dropdown shows what a single
 group's member would see. A banner on every page marks the data as mock.
 **Never set `DEMO_MODE` on a real deployment.**
 
-Data persists between `docker compose up` runs. To reset with fresh dates, run
-`docker compose down -v` and then start it again.
+Data persists between runs. To reset with fresh dates, run
+`docker compose -f docker-compose.demo.yml down -v` and then start it again.
+To run it for real with your own data, see "Running it with Docker" below.
 
 ## Architecture
 
@@ -142,45 +143,97 @@ flowchart LR
 
 ## Adapting this for your institute
 
-This was written for JIC's specific storage layout, LDAP structure, and
-Diskover/Isilon deployment — none of that is generic, and there's no
-institute-selection config to flip. Forking this for a different institute
-means finding and editing the JIC-specific assumptions below, in your own
-copy, before (or while) you deploy it. None of this needs restructuring the
-code — it's all plain constants, grouped together in each file.
+Everything institute-specific lives in one folder, chosen with the
+`INSTITUTE_DIR` environment variable. The repo's own `institute/` holds JIC's
+settings and is the default. For your own institute, copy
+`institute-template/` (every setting is commented there), edit it, and point
+`INSTITUTE_DIR` at your copy. You don't need to change any code.
 
-- **Filesystem root paths** — `INDEX_ROOT_PATHS` in `diskover_complex.py`
-  hardcodes every known Diskover index name → real filesystem root path
-  (e.g. `/ifs/apricot/JIC/PrimaryData/GROUP_SCRATCH`). Replace with your own
-  indices and paths; `get_root_path()` falls back to auto-detecting an
-  unknown index's root by sampling search results, so this doesn't need to
-  be exhaustive on day one.
-- **The Diskover instance URL** — `BASE` near the top of `diskover_complex.py`.
-- **Area/tier naming** — `AREA_DISPLAY_OVERRIDES`, `INSTITUTE_TIERS`,
-  `GROUP_AREA_PATTERNS` in `app.py` encode JIC's specific storage tiers
-  (Legacy/Scratch/Archive/Deep Archive) and area-name patterns
-  ("Research Groups", "Group Scratch", ...). If your storage isn't organized
-  into comparable tiers, Institute Trends and the tier-stacked evolution
-  charts won't be meaningful until these are adjusted — everything else
-  (Overview, Area Evolution, Big Files, Duplicate Files) doesn't depend on
-  this tier concept at all.
-- **LDAP structure** — `LDAP_ALLOWED_GROUP_DN`, `LDAP_REQUIRED_GROUP_DNS`,
-  and the rest of the LDAP settings are environment variables (see the table
-  under "Secrets" below and `deploy/diskover-dashboard.env.example`), not
-  hardcoded — these just need real values for your directory, no code
-  changes. `GROUP_CN_PREFIXES`/`RG_SUGGESTION_PREFIXES` in `app.py` do
-  hardcode JIC's naming convention for group-related LDAP groups (`RG-`,
-  `RGGRANT-`, `ARCHIVE-JIC-`) and would need adjusting to match yours.
-- **Branding** — `static/` has JIC's logo and the "Great Data Management"
-  GTA-themed header easter egg; `templates/base.html`'s `<title>` and the
-  footer text in each template mention JIC by name. All cosmetic, replace
-  freely — the GTA easter egg is a fun default, not a load-bearing feature,
-  so remove it if it's not your team's sense of humor.
-- **The Data Management Guide content** (`templates/data_management.html`,
-  `documents/*.pptx`/`*.pdf`) is JIC's own general research-data-management
-  guidance (not derived from the dashboard's own data) — useful as a worked
-  example of what to put there, but written for JIC's own policies and
-  support contacts, not generic advice.
+- **`institute.yaml`** holds:
+  - Names and text: browser title, footer, login wording, report titles.
+  - Links: the header logo link, an optional bar of links to your other
+    tools, and an optional Google Analytics ID (none by default).
+  - Diskover: the instance URL and index → filesystem root paths, plus the
+    daily Isilon dump filename prefix.
+  - Your storage layout (next section).
+- **`static/`** holds your logos and favicons, named in `institute.yaml`'s
+  `branding:`. A file here also replaces the built-in file of the same name.
+- **`templates/`** replaces any page outright. For example, the Data
+  Management Guide (`data_management.html`) and Help page (`help.html`) are
+  JIC's own content. Copy them from `templates/` and rewrite them, or set
+  `data_management_guide: false` to hide the guide.
+
+### Your storage layout
+
+The dashboard sorts storage areas (one per Diskover index) into three kinds,
+using substrings of the area labels:
+
+- **Owner areas** (`owner_area_patterns`): each top-level folder belongs to
+  one owner. At JIC that's a research group leader, but it can be a lab, a PI
+  or a project. These folders get the per-owner pages (Group Leader
+  Evolution, Duplicate Files) and subfolder detail. Members of the matching
+  LDAP group (`group_cn_prefixes`, e.g. `RG-Jane-Doe` → `Jane-Doe`) can see
+  them.
+- **User homes** (`user_home_patterns`): each user sees only their own folder.
+- **Everything else** is visible to admins, or to the groups you link it to
+  under **Admin → Access Control**.
+
+**If you don't organise storage by groups**, set
+`owner_area_patterns: []`. Overview, Area Evolution, Big Files, Growth
+Alerts and Institute Trends all work as normal. The per-owner pages are
+hidden from the menu, and you can still give any LDAP group access to any
+folder with Access Control rules.
+
+**Tiers** (`tiers`) are the part of an area's display name before " - ", e.g.
+`Scratch - Groups`. They drive Institute Trends and the tier-stacked charts.
+Leave the list empty if your storage isn't tiered.
+
+### LDAP
+
+All NBI institutes share one directory, so the LDAP connection settings
+(environment variables, defaulting to NBI's) are the same for everyone. What
+differs is which groups matter, and that goes in `institute.yaml`'s `access:`
+section:
+
+- `admin_group_dn`: your dashboard admins.
+- `required_group_dns`: who may sign in at all. Since every NBI user is in
+  the same directory, this is what keeps other institutes' staff out of your
+  dashboard. An empty list lets any NBI user sign in, though they'd still see
+  only their own data.
+- `group_cn_prefixes`: how your research-group LDAP groups map to folders.
+
+The `LDAP_ALLOWED_GROUP_DN` and `LDAP_REQUIRED_GROUP_DNS` environment
+variables still work, and override `institute.yaml` if set.
+
+## Running it with Docker
+
+The alternative to the manual VM setup below. It runs the app, MariaDB, and
+optionally the daily Isilon import, in containers.
+
+```bash
+cp deploy/docker.env.example .env                 # fill in DB passwords, secret key, LDAP bind password
+cp -r institute-template institute-local           # then edit institute-local/
+docker compose up -d --build                       # → http://localhost:5000
+```
+
+(At JIC, set `INSTITUTE_PATH=./institute` in `.env` instead of making
+`institute-local/`.)
+
+The database is created from `schema.sql` on first start and kept in the
+`db-data` volume. To load data:
+
+```bash
+# Monthly Diskover crawl, run from the container; writes to ./runs (RUNS_PATH)
+docker compose run --rm app python diskover_complex.py
+# …or copy a crawl made elsewhere into ./runs/YYYY/MM/, then import it:
+docker compose run --rm app python import_csv.py runs/2026/10
+
+# Daily Isilon SmartQuotas import (point ISILON_JSON_PATH at the dumps)
+docker compose --profile isilon up -d
+```
+
+Put a reverse proxy with HTTPS in front of it for anything beyond a trial, and
+then set `SESSION_COOKIE_SECURE=1`.
 
 ## 1. On the remote VM — one-time setup
 
@@ -227,7 +280,12 @@ pip install -r requirements.txt
 Note: `diskover_complex.py` (the crawler) needs `requests` and
 `beautifulsoup4`, which are **not** in `requirements.txt` — it's meant to run
 on your own laptop/WSL against the Diskover web UI, not on the server. Only
-install those where you actually run the crawler.
+install those where you actually run the crawler (plus `PyYAML`, which it
+needs to read `institute.yaml`).
+
+Every script reads your institute settings from `INSTITUTE_DIR` (default:
+the repo's own `institute/`, JIC's settings) — see "Adapting this for your
+institute".
 
 ### 1c. Secrets — environment variables only, no hardcoded defaults
 
@@ -478,8 +536,8 @@ Optional (sensible defaults in `config.py`):
 | `LDAP_USE_SSL`        | false                 | true/false |
 | `LDAP_BASE_DN`        | DC=nbi,DC=ac,DC=uk    | Search base DN |
 | `LDAP_BIND_USER_DN`   | (see config.py)       | Service account DN used for LDAP search |
-| `LDAP_ALLOWED_GROUP_DN` | CN=PLAT-Informatics,OU=JICPlatforms,OU=NBIGroups,DC=nbi,DC=ac,DC=uk | Full-access informatics group (admin — not the login gate) |
-| `LDAP_REQUIRED_GROUP_DNS` | CN=jic-hpc-group,...;CN=jic-hpc-training,... (semicolon-separated) | **The login gate** — a valid AD account that isn't a member of ANY of these groups is rejected at login, before a session is created |
+| `LDAP_ALLOWED_GROUP_DN` | `institute.yaml`'s `access.admin_group_dn` (JIC: CN=PLAT-Informatics,OU=JICPlatforms,OU=NBIGroups,DC=nbi,DC=ac,DC=uk) | Full-access informatics group (admin — not the login gate) |
+| `LDAP_REQUIRED_GROUP_DNS` | `institute.yaml`'s `access.required_group_dns` (JIC: CN=jic-hpc-group,...;CN=jic-hpc-training,...); semicolon-separated when set here | **The login gate** — a valid AD account that isn't a member of ANY of these groups is rejected at login, before a session is created |
 | `FLASK_DEBUG`         | unset (off)           | Set to `1` to enable Werkzeug's debugger for local development (`python app.py`). Never set this in production — it shows full stack traces and an interactive console on any unhandled exception. Has no effect under gunicorn. |
 | `SESSION_COOKIE_SECURE` | unset (off)         | Set to `1`/`true` once the deployment is confirmed to terminate HTTPS in front of the app — forces the session cookie to only be sent over HTTPS. Left off by default since turning it on behind plain HTTP would silently break login (the cookie would never be sent back). |
 
@@ -842,10 +900,15 @@ erDiagram
 | `delete_snapshot.py` | Removes one or more monthly snapshots (and their `directory_stats`/`subdirectory_stats` rows), **and** any `isilon_quota_stats` rows falling in the same month(s) — since Isilon data is dated independently of snapshots, deleting a bad month cleans up both sources together |
 | `clean_old_top_files.py` | Cleans up old `top_files.csv` crawl output, locally and (optionally) from git history — see "Cleaning up old top_files.csv" below |
 | `config.py` | Shared DB/LDAP config, reads from environment |
+| `institute.py` | Loads `INSTITUTE_DIR`'s `institute.yaml` (names, branding, storage layout) for the app and scripts |
+| `institute/` | JIC's institute settings (the default `INSTITUTE_DIR`) |
+| `institute-template/` | Commented starting point for another institute's settings |
+| `Dockerfile`, `docker-compose.yml` | Real deployment in Docker — see "Running it with Docker" |
+| `docker-compose.demo.yml` | Self-contained demo with mock data |
 | `app.py` | Flask web application |
 | `templates/` | Jinja2 HTML templates |
 | `static/` | Login page images (cover, background, JIC Informatics badge) |
-| `deploy/` | systemd unit/timer files and the `.env.example` |
+| `deploy/` | systemd unit/timer files, the `.env.example`, and `docker.env.example` for Docker |
 | `requirements.txt` | Python dependencies for the web app / importers (not the crawler) |
 
 ---

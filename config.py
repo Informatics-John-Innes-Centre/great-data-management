@@ -3,6 +3,8 @@
 
 import os
 
+from institute import ACCESS
+
 
 def _required_env(name):
     value = os.environ.get(name)
@@ -36,21 +38,20 @@ LDAP_BIND_USER_PASSWORD = (
     os.getenv("LDAP_BIND_USER_PASSWORD", "") if DEMO_MODE
     else _required_env("LDAP_BIND_USER_PASSWORD")
 )
-LDAP_ALLOWED_GROUP_DN = os.getenv(
-    "LDAP_ALLOWED_GROUP_DN",
-    "CN=PLAT-Informatics,OU=JICPlatforms,OU=NBIGroups,DC=nbi,DC=ac,DC=uk",
-)
+# The connection settings above are NBI's shared directory, the same for every
+# institute. Which groups matter differs per institute, so these two come from
+# institute.yaml's access: section, with the env vars kept as an override.
+#
+# Members of this group are admins.
+LDAP_ALLOWED_GROUP_DN = os.getenv("LDAP_ALLOWED_GROUP_DN", ACCESS["admin_group_dn"])
 # Membership in ANY of these groups is required just to log in at all
 # (checked before the allowed_group_dn admin check above, which is
-# unaffected by this). Same groups used to gate flask-hpc-job-stats.
-# Semicolon-separated since a DN itself contains commas.
+# unaffected by this). Empty = any directory user. The env var is
+# semicolon-separated since a DN itself contains commas.
+_required_dns_env = os.environ.get("LDAP_REQUIRED_GROUP_DNS")
 LDAP_REQUIRED_GROUP_DNS = [
     dn.strip()
-    for dn in os.getenv(
-        "LDAP_REQUIRED_GROUP_DNS",
-        "CN=jic-hpc-group,OU=NBIGroups,DC=nbi,DC=ac,DC=uk;"
-        "CN=jic-hpc-training,OU=NBIGroups,DC=nbi,DC=ac,DC=uk",
-    ).split(";")
+    for dn in (_required_dns_env.split(";") if _required_dns_env is not None else ACCESS["required_group_dns"])
     if dn.strip()
 ]
 

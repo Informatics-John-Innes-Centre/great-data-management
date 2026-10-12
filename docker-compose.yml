@@ -1,0 +1,61 @@
+# Real deployment: MariaDB + the dashboard, with your own data, LDAP and
+# institute settings. Setup is in the README ("Running it with Docker"):
+#   cp deploy/docker.env.example .env               # then fill it in
+#   cp -r institute-template institute-local        # then edit it
+#   docker compose up -d --build
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: diskover_dashboard
+      MARIADB_USER: diskover
+      MARIADB_PASSWORD: ${DISKOVER_DB_PASS:?set DISKOVER_DB_PASS in .env}
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DISKOVER_DB_HOST: db
+      DISKOVER_DB_USER: diskover
+      DISKOVER_DB_NAME: diskover_dashboard
+    volumes:
+      - ${INSTITUTE_PATH:-./institute-local}:/institute:ro
+      - ${RUNS_PATH:-./runs}:/app/runs
+    ports:
+      - "${APP_PORT:-5000}:5000"
+
+  # Optional daily Isilon SmartQuotas import (enable with --profile isilon).
+  # Imports any not-yet-loaded daily dumps from the last 31 days, once a day.
+  isilon-import:
+    build: .
+    profiles: [isilon]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DISKOVER_DB_HOST: db
+      DISKOVER_DB_USER: diskover
+      DISKOVER_DB_NAME: diskover_dashboard
+    volumes:
+      - ${INSTITUTE_PATH:-./institute-local}:/institute:ro
+      - ${ISILON_JSON_PATH:-./isilon-json}:/data/isilon:ro
+    command: ["sh", "-c", "while true; do python import_isilon_daily.py --auto --root /data/isilon; sleep 86400; done"]
+
+volumes:
+  db-data:

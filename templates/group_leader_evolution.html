@@ -291,7 +291,7 @@ async function downloadLeaderReportPDF(btn) {
     const leaderName = document.getElementById("leaderEvolutionChart").dataset.leader;
     downloadReportPDF({
       filename: `${leaderName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-report.pdf`,
-      title: "JIC Storage Dashboard — Group Leader Report",
+      title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Group Leader Report",
       subtitle: btn.dataset.subtitle,
       tiles: collectPageTiles(),
       charts: collectPageCharts(),

@@ -19,6 +19,7 @@ from flask import (
     Flask, render_template, request, jsonify, session, redirect, url_for,
     flash, send_from_directory,
 )
+from jinja2 import ChoiceLoader, FileSystemLoader
 import mysql.connector
 from ldap3 import Server, Connection, ALL
 from ldap3.core.exceptions import LDAPException
@@ -26,9 +27,25 @@ from ldap3.utils.conv import escape_filter_chars
 
 from config import APP_SECRET_KEY, DEMO_MODE, get_db_config, get_ldap_config
 from duplicate_finder import cluster_duplicate_files
+import institute
+from institute import ACCESS, BRANDING, INSTITUTE, STORAGE, like_patterns
 
 app = Flask(__name__)
 app.secret_key = APP_SECRET_KEY
+
+# An institute's own templates/ and static/ (see institute.py) win over the
+# built-in ones, so logos or whole pages can be replaced without forking.
+if os.path.isdir(institute.TEMPLATES_DIR):
+    app.jinja_loader = ChoiceLoader([FileSystemLoader(institute.TEMPLATES_DIR), app.jinja_loader])
+
+
+def _institute_static(filename):
+    if os.path.isfile(os.path.join(institute.STATIC_DIR, filename)):
+        return send_from_directory(institute.STATIC_DIR, filename)
+    return app.send_static_file(filename)
+
+
+app.view_functions["static"] = _institute_static
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     # Not forced on unconditionally — this README doesn't confirm the
@@ -54,66 +71,28 @@ REQUIRED_LDAP_KEYS = (
     "required_group_dns",
 )
 
-AREA_PREFIXES = (
-    "JIC-Apricot / Primarydata ",
-    "JIC Apricot / Primarydata ",
-    "JIC-Apricot / Loanstorage Archive ",
-    "JIC Apricot / Loanstorage Archive ",
-)
+# Storage layout — all institute-specific, from institute.yaml (see
+# institute.py). JIC's values are in institute/institute.yaml.
+#
+# Prefixes stripped from raw index_labels for display, after exact-match
+# AREA_DISPLAY_OVERRIDES (friendly "Tier - Category" names) are tried first.
+AREA_PREFIXES = tuple(STORAGE["area_label_prefixes"])
+AREA_DISPLAY_OVERRIDES = dict(STORAGE["area_display_names"])
 
-# Friendly "Tier - Category" display names for the areas that fit that grid.
-# Keyed on the raw index_label exactly as diskover_complex.py's index_to_label()
-# generates it; other areas (User Homes, Instruments, Services, etc.) fall
-# through to the generic AREA_PREFIXES stripping below, unchanged.
-AREA_DISPLAY_OVERRIDES = {
-    # Displayed as "Legacy" (was "Main") — this tier predates the current
-    # storage layout and is no longer where new data should go, but the
-    # underlying index_label/database values are untouched, display-only.
-    "JIC-Apricot / Primarydata Research Groups":   "Legacy - Groups",
-    "JIC Apricot / Primarydata Research Groups":   "Legacy - Groups",
-    "JIC-Apricot / Primarydata Research Projects": "Legacy - Projects",
-    "JIC Apricot / Primarydata Research Projects": "Legacy - Projects",
+USER_HOME_PATTERNS = like_patterns(STORAGE["user_home_patterns"])
 
-    # Exception: kept as "Main" rather than renamed to "Legacy" like the rest
-    # of Primarydata above — still bucketed together with Legacy in tier
-    # charts (see tier_bucket_for()'s TIER_BUCKET_ALIASES), so this is a
-    # display-only difference, not a new tier in Institute Trends etc.
-    "JIC-Apricot / Primarydata Platforms":         "Main - Platforms",
-    "JIC Apricot / Primarydata Platforms":         "Main - Platforms",
+# Areas whose top-level directories each belong to one owner (at JIC, a
+# research group leader). May be empty for an institute without such areas;
+# the per-owner pages then just have nothing to list.
+GROUP_AREA_PATTERNS = like_patterns(STORAGE["owner_area_patterns"])
 
-    "JIC-Apricot / Primarydata Group Scratch":    "Scratch - Groups",
-    "JIC Apricot / Primarydata Group Scratch":    "Scratch - Groups",
-    "JIC-Apricot / Primarydata Platform Scratch": "Scratch - Platforms",
-    "JIC Apricot / Primarydata Platform Scratch": "Scratch - Platforms",
-    "JIC-Apricot / Primarydata Projects Scratch": "Scratch - Projects",
-    "JIC Apricot / Primarydata Projects Scratch": "Scratch - Projects",
 
-    "JIC-Apricot / Loanstorage Archive Groups":    "Archive - Groups",
-    "JIC Apricot / Loanstorage Archive Groups":    "Archive - Groups",
-    "JIC-Apricot / Loanstorage Archive Platforms": "Archive - Platforms",
-    "JIC Apricot / Loanstorage Archive Platforms": "Archive - Platforms",
-    "JIC-Apricot / Loanstorage Archive Projects":  "Archive - Projects",
-    "JIC Apricot / Loanstorage Archive Projects":  "Archive - Projects",
-
-    "JIC-Peach / Deeparchive Groups":    "Deep Archive - Groups",
-    "JIC Peach / Deeparchive Groups":    "Deep Archive - Groups",
-    "JIC-Peach / Deeparchive Platforms": "Deep Archive - Platforms",
-    "JIC Peach / Deeparchive Platforms": "Deep Archive - Platforms",
-    "JIC-Peach / Deeparchive Projects":  "Deep Archive - Projects",
-    "JIC Peach / Deeparchive Projects":  "Deep Archive - Projects",
-}
-
-USER_HOME_PATTERNS = (
-    "%User Homes%",
-    "%User_Homes%",
-)
-
-GROUP_AREA_PATTERNS = (
-    "%Research Groups%",
-    "%Group Scratch%",
-    "%Archive Groups%",
-    "%Groups%",
-)
+def like_any(column, patterns):
+    """(`column LIKE p1 OR column LIKE p2 ...`, params) — never true when
+    patterns is empty, rather than the invalid SQL an empty join would give."""
+    if not patterns:
+        return "1=0", []
+    return " OR ".join(f"{column} LIKE %s" for _ in patterns), list(patterns)
 
 # Allowlist mapping a request's ?metric= value to a real directory_stats
 # column — never interpolate the raw request value into SQL directly.
@@ -127,16 +106,11 @@ LEADER_TIER_METRICS = {
 GROWTH_ALERT_THRESHOLD_PCT = 10  # flag a directory only if it moved by at least this %...
 GROWTH_ALERT_THRESHOLD_BYTES = 50_000_000_000  # ...AND at least this many bytes (50 GB) — avoids noise from tiny directories
 
-GROUP_CN_PREFIXES = (
-    "RG-",
-    "RGGRANT-",
-    "ARCHIVE-JIC-",
-    "ARCHIVE-",
-)
-
-RG_SUGGESTION_PREFIXES = (
-    "RG-",
-)
+# LDAP group CN prefixes tying a group to its owner directory name, e.g.
+# "RG-Jane-Doe" -> the "Jane-Doe" directories.
+GROUP_CN_PREFIXES = tuple(ACCESS["group_cn_prefixes"])
+GROUP_CN_SUGGESTION_PREFIX = ACCESS["group_cn_suggestion_prefix"]
+RG_SUGGESTION_PREFIXES = (GROUP_CN_SUGGESTION_PREFIX,) if GROUP_CN_SUGGESTION_PREFIX else ()
 
 # ── File-extension storage action plan (traffic light) ──────────────────────
 # red    = ACT    — normally a delete/migrate/convert candidate (temporary,
@@ -364,7 +338,7 @@ def human_bytes(n):
 
 def is_user_home_label(label):
     value = (label or "").lower()
-    return "user homes" in value or "user_homes" in value
+    return any(pattern.strip("%").lower() in value for pattern in USER_HOME_PATTERNS)
 
 
 def is_group_area_label(label):
@@ -635,9 +609,9 @@ def build_group_tier_timeseries(metric_column, leader_name=None):
         where_sql = f"({scope_sql}) AND ({access_sql})"
         where_params = (*scope_params, *access_params)
     else:
-        area_match = " OR ".join([f"ds.index_label LIKE %s" for _ in GROUP_AREA_PATTERNS])
+        area_match, area_params = like_any("ds.index_label", GROUP_AREA_PATTERNS)
         where_sql = f"({area_match}) AND ({access_sql})"
-        where_params = (*GROUP_AREA_PATTERNS, *access_params)
+        where_params = (*area_params, *access_params)
     return _aggregate_tier_series(metric_column, where_sql, where_params, short_area_label)
 
 
@@ -648,14 +622,20 @@ def build_group_tier_timeseries(metric_column, leader_name=None):
 # Category grid (User Homes, Instruments, Services, ...) land in "Other"
 # rather than each getting their own line, to keep the institute view
 # readable.
-INSTITUTE_TIERS = ("Legacy", "Scratch", "Archive", "Deep Archive")
+INSTITUTE_TIERS = tuple(STORAGE["tiers"])
+
+# Chart color per tier, by position in INSTITUTE_TIERS (JIC's order keeps
+# its original Legacy blue / Scratch teal / Archive purple / Deep Archive pink).
+TIER_PALETTE = ("#4f8ef7", "#2dd4bf", "#a78bfa", "#f472b6", "#fbbf24", "#34d399", "#fb7185", "#60a5fa")
+TIER_COLORS = {tier: TIER_PALETTE[i % len(TIER_PALETTE)] for i, tier in enumerate(INSTITUTE_TIERS)}
+TIER_COLORS["Other"] = "#8892a4"
 
 
 # "Main - Platforms" (see AREA_DISPLAY_OVERRIDES) displays under its own
 # name but still counts toward Legacy here — it's the same Primarydata tier
 # as the rest of Legacy, just kept under its old display name for this one
 # area, not a genuinely separate tier.
-TIER_BUCKET_ALIASES = {"Main": "Legacy"}
+TIER_BUCKET_ALIASES = dict(STORAGE["tier_aliases"])
 
 
 def tier_bucket_for(index_label):
@@ -669,7 +649,7 @@ def tier_bucket_for(index_label):
 # in one of these tiers, that's the recommended one to keep (Archive/Deep
 # Archive is where data is meant to end up long-term; a copy still sitting in
 # Legacy/Scratch alongside it is the more likely one to be safe to remove).
-DUPLICATE_KEEP_ARCHIVE_TIERS = {"Archive", "Deep Archive"}
+DUPLICATE_KEEP_ARCHIVE_TIERS = set(STORAGE["keep_tiers"])
 
 
 def build_institute_tier_timeseries(metric_column):
@@ -903,23 +883,24 @@ def get_available_ldap_groups():
 
 
 def get_db_group_suggestions():
+    if not GROUP_CN_SUGGESTION_PREFIX:
+        return []
+    area_match, area_params = like_any("index_label", GROUP_AREA_PATTERNS)
     rows = query(
-        """
+        f"""
         SELECT DISTINCT directory
         FROM directory_stats
-        WHERE index_label LIKE %s
-           OR index_label LIKE %s
-           OR index_label LIKE %s
+        WHERE {area_match}
         ORDER BY directory
         """,
-        ("%Research Groups%", "%Group Scratch%", "%Archive Groups%"),
+        tuple(area_params),
     )
     names = set()
     for row in rows:
         directory = (row.get("directory") or "").strip()
         if not directory:
             continue
-        names.add(f"RG-{directory}")
+        names.add(f"{GROUP_CN_SUGGESTION_PREFIX}{directory}")
     return sorted(names, key=str.lower)
 
 
@@ -1002,9 +983,9 @@ def leader_scope_sql(leader_name, alias):
     PLUS any directory linked via a directory_group_rules row that resolves
     to this leader (see linked_rules_for_leader()).
     """
-    area_match = " OR ".join([f"{alias}.index_label LIKE %s" for _ in GROUP_AREA_PATTERNS])
+    area_match, area_params = like_any(f"{alias}.index_label", GROUP_AREA_PATTERNS)
     clauses = [f"(LOWER({alias}.directory) = %s AND ({area_match}))"]
-    params = [leader_name.lower(), *GROUP_AREA_PATTERNS]
+    params = [leader_name.lower(), *area_params]
     for rule in linked_rules_for_leader(leader_name):
         clauses.append(f"({alias}.index_label = %s AND {alias}.path LIKE %s)")
         params.extend([rule["index_label"], f"{rule['path_prefix']}%"])
@@ -1108,12 +1089,12 @@ def build_access_sql(alias="ds"):
     params = []
 
     if username:
-        home_match = " OR ".join([f"{alias}.index_label LIKE %s" for _ in USER_HOME_PATTERNS])
+        home_match, home_params = like_any(f"{alias}.index_label", USER_HOME_PATTERNS)
         clauses.append(
             f"(LOWER({alias}.directory) = %s AND ({home_match}))"
         )
         params.append(username)
-        params.extend(USER_HOME_PATTERNS)
+        params.extend(home_params)
 
     group_cns = effective_group_cns()
     if group_cns:
@@ -1132,13 +1113,13 @@ def build_access_sql(alias="ds"):
 
         inferred_names = inferred_directory_names_from_groups()
         if inferred_names:
-            area_match = " OR ".join([f"{alias}.index_label LIKE %s" for _ in GROUP_AREA_PATTERNS])
+            area_match, area_params = like_any(f"{alias}.index_label", GROUP_AREA_PATTERNS)
             dir_match = ", ".join(["%s"] * len(inferred_names))
             clauses.append(
                 f"(LOWER({alias}.directory) IN ({dir_match}) AND ({area_match}))"
             )
             params.extend(inferred_names)
-            params.extend(GROUP_AREA_PATTERNS)
+            params.extend(area_params)
 
     if not clauses:
         return "1=0", []
@@ -1181,6 +1162,10 @@ def inject_permissions():
         "short_area_label": short_area_label,
         "human_bytes": human_bytes,
         "demo_mode": DEMO_MODE,
+        "institute": INSTITUTE,
+        "branding": BRANDING,
+        "tier_colors": TIER_COLORS,
+        "has_owner_areas": bool(GROUP_AREA_PATTERNS),
     }
 
 
@@ -1610,6 +1595,8 @@ def evolution():
 
 @app.route("/data-management")
 def data_management():
+    if not INSTITUTE["data_management_guide"]:
+        return redirect(url_for("index"))
     return render_template("data_management.html")
 
 
@@ -1621,6 +1608,8 @@ def help_page():
 
 @app.route("/data-management/presentation")
 def data_management_presentation():
+    if not INSTITUTE["data_management_guide"]:
+        return redirect(url_for("index"))
     return send_from_directory(
         DOCUMENTS_DIR, DATA_MANAGEMENT_PRESENTATION, as_attachment=True
     )
@@ -1642,7 +1631,7 @@ def get_hidden_group_leaders():
 
 def get_group_leaders():
     access_sql, access_params = build_access_sql("ds")
-    area_match = " OR ".join([f"ds.index_label LIKE %s" for _ in GROUP_AREA_PATTERNS])
+    area_match, area_params = like_any("ds.index_label", GROUP_AREA_PATTERNS)
     rows = query(
         f"""
         SELECT DISTINCT directory
@@ -1651,7 +1640,7 @@ def get_group_leaders():
           AND ({access_sql})
         ORDER BY directory
         """,
-        (*GROUP_AREA_PATTERNS, *access_params),
+        (*area_params, *access_params),
     )
     seen = {}
     for row in rows:
@@ -1752,7 +1741,8 @@ def compute_growth_alerts(pct_threshold=GROWTH_ALERT_THRESHOLD_PCT, bytes_thresh
     # except User Homes, excluded here specifically: hundreds of individual
     # per-user directories would otherwise dominate the alert list with
     # routine personal-folder fluctuations.
-    not_user_home = " AND ".join([f"ds.index_label NOT LIKE %s" for _ in USER_HOME_PATTERNS])
+    home_match, home_params = like_any("ds.index_label", USER_HOME_PATTERNS)
+    not_user_home = f"NOT ({home_match})"
     access_sql, access_params = build_access_sql("ds")
 
     curr_rows = query(
@@ -1765,7 +1755,7 @@ def compute_growth_alerts(pct_threshold=GROWTH_ALERT_THRESHOLD_PCT, bytes_thresh
           AND ({not_user_home})
           AND ({access_sql})
         """,
-        (period_snap["id"], *USER_HOME_PATTERNS, *access_params),
+        (period_snap["id"], *home_params, *access_params),
     )
 
     prev_snap = _find_previous_snapshot(period_snap["run_date"])
@@ -1780,7 +1770,7 @@ def compute_growth_alerts(pct_threshold=GROWTH_ALERT_THRESHOLD_PCT, bytes_thresh
               AND aset.enabled = 1
               AND ({not_user_home})
             """,
-            (prev_snap["id"], *USER_HOME_PATTERNS),
+            (prev_snap["id"], *home_params),
         )
         prev_by_path = {row["path"]: row["dir_size_bytes"] for row in prev_rows}
 
@@ -2731,11 +2721,10 @@ def api_institute_evolution_by_tier():
 
 
 # Display-only, this page alone: the tiles and the chart's legend/tooltip
-# (see institute_trends.html's TIER_CHART_OPTS.tierDisplayNames) show
-# "Legacy" as "Core" here. Everywhere else that tier is still called
-# "Legacy" — this doesn't touch INSTITUTE_TIERS, tier_bucket_for(), or
-# AREA_DISPLAY_OVERRIDES, so no other page/export is affected.
-INSTITUTE_TRENDS_TIER_DISPLAY_OVERRIDES = {"Legacy": "Core"}
+# (institute_trends.html's tierDisplayNames) can rename a tier here (JIC:
+# "Legacy" shows as "Core"). Doesn't touch INSTITUTE_TIERS, tier_bucket_for(),
+# or AREA_DISPLAY_OVERRIDES, so no other page/export is affected.
+INSTITUTE_TRENDS_TIER_DISPLAY_OVERRIDES = dict(STORAGE["trends_tier_names"])
 
 
 @app.route("/institute-trends")
@@ -2779,6 +2768,7 @@ def institute_trends():
         latest_snapshot=latest_snap,
         has_prev=bool(prev_snap),
         tier_tiles=tier_tiles,
+        tier_display_names=INSTITUTE_TRENDS_TIER_DISPLAY_OVERRIDES,
     )
 
 

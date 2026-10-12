@@ -190,7 +190,7 @@ function downloadExtensionCSV() {
 function downloadBiggestFilesReportPDF(btn) {
   downloadReportPDF({
     filename: "biggest-files-report.pdf",
-    title: "JIC Storage Dashboard — Biggest Files Report",
+    title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Biggest Files Report",
     subtitle: btn.dataset.subtitle,
     tiles: collectPageTiles(),
     charts: collectPageCharts(),

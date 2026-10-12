@@ -1,0 +1,102 @@
+# Institute settings: a starting point for another NBI institute. NBI's
+# shared facilities (LDAP directory, Diskover, Isilon) are already filled in;
+# what's left is your own institute's groups, folders and branding. Search
+# for "XYZ" and replace it with your institute's details.
+#
+# Copy this whole folder (e.g. to institute-local/), edit it, and point
+# INSTITUTE_DIR at it (docker-compose.yml mounts INSTITUTE_PATH from .env).
+# Anything left out falls back to a neutral default. JIC's own, fully
+# filled-in version is institute/institute.yaml — a useful worked example.
+#
+# The folder can also hold:
+#   static/      your logos/favicons, referenced by filename under branding:
+#                below; a file here also replaces the same-named built-in one
+#   templates/   any page to replace outright, e.g. your own
+#                data_management.html or help.html (copy from templates/)
+
+institute:
+  name: XYZ Institute
+  short_name: XYZ                   # used in report titles, e.g. "XYZ Storage Dashboard"
+  app_title: XYZ Data Management    # browser tab title
+  footer: Storage dashboard — XYZ Institute
+  login_heading: Sign in with your NBI account
+  login_hint: just your username, e.g. <code>jdoe</code>
+  home_url: ""                      # where the header logo links to
+  analytics_id: ""                  # Google Analytics ID, or "" for none
+  data_management_guide: false      # true once you've supplied templates/data_management.html
+  app_switcher: []                  # optional bar of links to your other tools:
+  #  - {label: XYZ Intranet, url: "https://intranet.xyz.ac.uk/"}
+  #  - {label: Storage Dashboard, current: true}
+
+branding:
+  # Filenames in this folder's static/ (or the app's built-in static/).
+  # Leave a logo "" to hide it.
+  header_logo_dark: ""              # e.g. xyz-logo-white.png (shown in dark theme)
+  header_logo_light: ""             # e.g. xyz-logo.png (shown in light theme)
+  app_logo: great_data_management.png
+  login_logo: ""
+  login_background: ""
+  favicon_svg: favicon.svg
+  favicon_png: favicon-32.png
+  apple_touch_icon: apple-touch-icon.png
+  app_logo_sound: ""                # clicking the app logo plays this (JIC's GTA easter egg)
+
+access:
+  # Groups in the shared NBI directory that matter to *your* institute.
+  # Members of this group are dashboard admins (see everything, admin pages).
+  admin_group_dn: CN=XYZ-Informatics,OU=NBIGroups,DC=nbi,DC=ac,DC=uk
+  # Users must be in at least one of these to sign in at all — this is what
+  # keeps other institutes' staff out of your dashboard. [] = any NBI user
+  # (they'd still only see their own data, but would be able to sign in).
+  required_group_dns:
+    - CN=xyz-staff,OU=NBIGroups,DC=nbi,DC=ac,DC=uk
+  # How your research-group LDAP groups are named relative to their folders:
+  # with [RG-], members of "RG-Jane-Doe" see the "Jane-Doe" folders in owner
+  # areas (below). [] if your groups don't follow a naming convention like
+  # that — give groups access with Admin → Access Control rules instead.
+  group_cn_prefixes: [RG-]
+  group_cn_suggestion_prefix: RG-   # builds the admin "Acting as" list
+
+storage:
+  # Area labels come from Diskover index names: "diskover-xyz-apricot-
+  # primarydata-research-groups" becomes "XYZ-Apricot / Primarydata Research
+  # Groups". Patterns below are case-insensitive substrings of those labels.
+
+  # Areas where each top-level folder belongs to one owner — a research group,
+  # lab, PI or project. Those folders get the per-owner pages (Group Leader
+  # Evolution, Duplicate Files), subfolder detail, and are visible to members
+  # of the matching LDAP group (see group_cn_prefixes above).
+  # No such areas? Use [] — the per-owner pages are then hidden, and you can
+  # still give groups access to any folder under Admin → Access Control.
+  owner_area_patterns: [Research Groups]
+
+  # Areas of per-user home folders (each user sees only their own).
+  user_home_patterns: [User Homes]
+
+  # Optional friendlier names for whole labels ("Tier - Category" names also
+  # drive the tier charts below). Anything not listed has area_label_prefixes
+  # stripped instead, or is shown as-is.
+  area_display_names:
+    "XYZ-Apricot / Primarydata Research Groups": Primary - Groups
+  area_label_prefixes: ["XYZ-Apricot / Primarydata "]
+
+  # Storage tiers, for Institute Trends and the tier-stacked charts: the part
+  # of a display name before " - ". Areas without one count as "Other".
+  # [] if your storage isn't tiered — those charts then show "Other" only.
+  tiers: [Primary]
+  tier_aliases: {}                  # display tier name -> tier it counts as
+  keep_tiers: []                    # duplicate files: prefer keeping copies in these tiers
+  trends_tier_names: {}             # renames for the Institute Trends page only
+
+diskover:
+  url: https://diskover.researchcomputing.nbi.ac.uk   # NBI's shared instance
+  # Your Diskover indices (name without date suffix) -> filesystem root.
+  # Unknown indices are auto-detected, so this needn't be complete.
+  index_roots:
+    diskover-xyz-apricot-primarydata-research-groups: /ifs/apricot/XYZ/PrimaryData/RESEARCH-GROUPS
+    diskover-xyz-apricot-primarydata-user_homes: /ifs/apricot/XYZ/PrimaryData/USER_HOMES
+  extra_subdir_indices: []          # other indices to scan per subfolder too
+
+isilon:
+  # Daily SmartQuotas dumps are read from <root>/YYYY/MM/<file_prefix>YYYYMMDD.json.
+  file_prefix: XYZ-daily-

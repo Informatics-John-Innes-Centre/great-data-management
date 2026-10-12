@@ -250,7 +250,7 @@ startAreaChartsWhenIdle();
 function downloadOverviewReportPDF(btn) {
   downloadReportPDF({
     filename: "storage-dashboard-overview-report.pdf",
-    title: "JIC Storage Dashboard — Overview Report",
+    title: "{{ ((institute.short_name ~ " ") if institute.short_name else "") ~ "Storage Dashboard" }} — Overview Report",
     subtitle: btn.dataset.subtitle,
     tiles: collectPageTiles(),
     charts: collectPageCharts(),
