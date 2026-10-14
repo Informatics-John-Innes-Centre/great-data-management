@@ -500,7 +500,6 @@
       <a href="{{ url_for('growth_alerts') }}">Storage Alerts &amp; Insights</a>
       <a href="{{ url_for('access_admin') }}">Admin</a>
       {% endif %}
-      <a href="{{ url_for('help_page') }}">Help</a>
       {% if can_view_all_user %}
       <form method="post" action="{{ url_for('set_acting_as') }}" style="display:inline-flex;" title="Preview the dashboard as a real member of a research group would see it">
         <select name="group_cn" onchange="this.form.submit()"
@@ -512,6 +511,7 @@
         </select>
       </form>
       {% endif %}
+      <a href="{{ url_for('help_page') }}">Help</a>
       <span class="nav-username" style="color:var(--muted); padding: 4px 8px;"
             title="{{ session.get('full_name') or session.get('username') }}">
         {{ session.get('full_name') or session.get('username') }}
