@@ -19,7 +19,7 @@ institute:
     - {label: Cross Charging, url: "https://cross-charging.informatics.jic.ac.uk/"}
     - {label: Training Repo, url: "https://repo.informatics.jic.ac.uk/"}
     - {label: Training Pills, url: "https://informatics.jic.ac.uk/training-pills/"}
-    - {label: Platform Advise, url: "https://informatics.jic.ac.uk/platform-advise/"}
+    - {label: Platform Advice, url: "https://informatics.jic.ac.uk/platform-advise/"}
     - {label: Drone Imagery Data, url: "https://drone-data.informatics.jic.ac.uk/"}
 
 branding:
