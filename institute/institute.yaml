@@ -21,6 +21,7 @@ institute:
     - {label: Training Pills, url: "https://informatics.jic.ac.uk/training-pills/"}
     - {label: Platform Advice, url: "https://informatics.jic.ac.uk/platform-advice/"}
     - {label: Drone Imagery Data, url: "https://drone-data.informatics.jic.ac.uk/"}
+    - {label: Events, url: "https://events.jic.ac.uk/"}
 
 branding:
   header_logo_dark: JIC_Informatics.png
