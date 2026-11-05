@@ -28,6 +28,17 @@ def cluster_duplicate_files(rows, tolerance_pct):
     dicts passed in (grouped, not copied), so callers can attach their own
     extra display fields to each row afterward.
     """
+    # Two rows with the exact same file_path are never a genuine duplicate
+    # pair - they're the same file, most likely an ingestion artifact (e.g.
+    # an unstable-pagination scan returning one file on two pages - see
+    # diskover_complex.py's get_dir_file_stats). Collapsing them here means
+    # already-ingested bad rows stop showing as false "possible duplicates"
+    # immediately, without waiting for a fresh crawl to overwrite them.
+    deduped_by_path = {}
+    for r in rows:
+        deduped_by_path.setdefault(r["file_path"], r)
+    rows = deduped_by_path.values()
+
     groups = {}
     for r in rows:
         basename = r["file_path"].rsplit("/", 1)[-1]

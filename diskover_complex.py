@@ -757,6 +757,11 @@ def get_dir_file_stats(session, full_path, index_name, top_n=1000,
     heap = []   # min-heap of (size_bytes, seq, entry) capped at top_n
     seq  = 0
     page = 1
+    seen_paths = set()  # search.php's pagination has no stable sort, so the
+    # same file can legitimately be returned on more than one page (ties,
+    # concurrent index changes mid-scan) - without this, it would be counted
+    # twice in ext_counts/ext_sizes and could occupy two slots in the top_n
+    # heap, surfacing downstream as a false "possible duplicate" of itself.
 
     while True:
         table = _fetch_file_stats_page(session, full_path, index_name, query, page,
@@ -792,6 +797,11 @@ def get_dir_file_stats(session, full_path, index_name, top_n=1000,
             path   = f"{parent}/{name}" if parent else name
             mtime  = (tds[mtime_idx].get_text(strip=True)
                       if mtime_idx is not None and mtime_idx < len(tds) else "")
+            rows_found += 1
+
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
 
             ext = _extension_of(name)
             ext_counts[ext] = ext_counts.get(ext, 0) + 1
@@ -803,7 +813,6 @@ def get_dir_file_stats(session, full_path, index_name, top_n=1000,
                 heapq.heappush(heap, (size_bytes, seq, entry))
             elif size_bytes > heap[0][0]:
                 heapq.heapreplace(heap, (size_bytes, seq, entry))
-            rows_found += 1
 
         if rows_found < 100:
             break
